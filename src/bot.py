@@ -29,25 +29,25 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default=str(Path(__file__).with_name("bot_config.json")),
+        default="bot_config.json",
         help="Path to JSON config file (default: assistant_bot/bot_config.json)",
     )
     parser.add_argument(
         "--pm-log-file",
         type=str,
-        default=str(Path(__file__).with_name("private_messages.jsonl")),
+        default="private_messages.jsonl",
         help="Path to JSONL log file for private chats (default: assistant_bot/private_messages.jsonl)",
     )
     parser.add_argument(
         "--quizzes-file",
         type=str,
-        default=str(Path(__file__).with_name("quizzes.json")),
+        default="quizzes.json",
         help="Path to JSON file with quizzes (default: assistant_bot/quizzes.json)",
     )
     parser.add_argument(
         "--quiz-state-file",
         type=str,
-        default=str(Path(__file__).with_name("quiz_state.json")),
+        default="quiz_state.json",
         help="Path to JSON file with per-user quiz state (default: assistant_bot/quiz_state.json)",
     )
     return parser.parse_args(argv)
