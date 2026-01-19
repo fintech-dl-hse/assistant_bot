@@ -50,6 +50,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="quiz_state.json",
         help="Path to JSON file with per-user quiz state (default: assistant_bot/quiz_state.json)",
     )
+    parser.add_argument(
+        "--users-file",
+        type=str,
+        default="users.json",
+        help="Path to JSON file with user data (default: assistant_bot/users.json)",
+    )
     return parser.parse_args(argv)
 
 
@@ -317,6 +323,59 @@ def _append_user_answer(
             "correct": bool(is_correct),
         }
     )
+
+
+def _load_users(users_file: str) -> Dict[str, Any]:
+    path = Path(users_file)
+    if not path.exists():
+        return {"users": {}}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return {"users": {}}
+        users = data.get("users")
+        if not isinstance(users, dict):
+            users = {}
+        return {"users": users}
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Failed to load users file %s; using empty state",
+            users_file,
+            exc_info=True,
+        )
+        return {"users": {}}
+
+
+def _save_users(users_file: str, data: Dict[str, Any]) -> None:
+    path = Path(users_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+
+    users = data.get("users")
+    if not isinstance(users, dict):
+        users = {}
+
+    def _user_key_sort(k: str) -> tuple[int, int | str]:
+        s = str(k)
+        if s.lstrip("-").isdigit():
+            return (0, int(s))
+        return (1, s)
+
+    normalized_users: Dict[str, Any] = {}
+    for user_key in sorted(users.keys(), key=_user_key_sort):
+        u = users.get(user_key)
+        if not isinstance(u, dict):
+            continue
+        normalized_users[str(user_key)] = {
+            "fio": str(u.get("fio") or "").strip(),
+            "username": str(u.get("username") or "").strip(),
+        }
+
+    payload = {"users": normalized_users}
+    raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    tmp_path.write_text(raw, encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def _handle_callback_query(
@@ -1112,6 +1171,7 @@ def _handle_message(
     pm_log_file: str,
     quizzes_file: str,
     quiz_state_file: str,
+    users_file: str,
     bot_user_id: int,
     bot_username: str,
 ) -> None:
@@ -1342,6 +1402,7 @@ def _handle_message(
         "/quiz",
         "/quiz_stat",
         "/quiz_admin_stat",
+        "/me",
     }:
         return
 
@@ -1356,6 +1417,7 @@ def _handle_message(
             "- /help",
             "- /qa <вопрос>",
             "- /get_chat_id",
+            "- /me <ФИО>",
             "- /quiz",
             "- /quiz_stat",
         ]
@@ -2089,6 +2151,56 @@ def _handle_message(
             ),
         )
         return
+    elif cmd == "/me":
+        if chat_type != "private":
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Команда доступна только в личных сообщениях с ботом.",
+            )
+            return
+
+        fio = (args or "").strip()
+        if not fio:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Usage: /me <ФИО>",
+            )
+            return
+
+        users_data = _load_users(users_file)
+        users = users_data.get("users")
+        if not isinstance(users, dict):
+            users = {}
+            users_data["users"] = users
+
+        user_key = str(user_id)
+        if user_key not in users:
+            users[user_key] = {}
+        users[user_key]["fio"] = fio
+        users[user_key]["username"] = username
+
+        try:
+            _save_users(users_file, users_data)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Не удалось сохранить данные: {type(e).__name__}: {e}",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"Готово. Сохранено ФИО: {fio}\nUsername: @{username}" if username else f"Готово. Сохранено ФИО: {fio}",
+        )
+        return
     elif cmd == "/qa":
         if not args:
             _send_with_formatting_fallback(
@@ -2229,6 +2341,7 @@ def main(argv: list[str] | None = None) -> None:
                         pm_log_file=args.pm_log_file,
                         quizzes_file=args.quizzes_file,
                         quiz_state_file=args.quiz_state_file,
+                        users_file=args.users_file,
                         bot_user_id=bot_user_id,
                         bot_username=bot_username,
                     )
