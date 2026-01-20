@@ -1494,6 +1494,7 @@ def _handle_message(
         "/quiz_stat",
         "/quiz_admin_stat",
         "/set_backup_chat_id",
+        "/backup",
         "/me",
     }:
         return
@@ -1523,6 +1524,7 @@ def _handle_message(
             lines.append("- /quiz_admin_stat")
             lines.append("- /tokens_stat")
             lines.append("- /set_backup_chat_id <chat_id>")
+            lines.append("- /backup")
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
@@ -1803,6 +1805,58 @@ def _handle_message(
             message_thread_id=message_thread_id,
             text=f"Готово. Установил чат для бэкапов: {backup_chat_id}",
         )
+        return
+    elif cmd == "/backup":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        backup_chat_id = settings.get("backup_chat_id")
+        if not isinstance(backup_chat_id, int) or backup_chat_id == 0:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Чат для бэкапов не настроен. Сначала выполните: /set_backup_chat_id <chat_id>",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text="Начинаю создание бэкапа...",
+        )
+
+        success = _create_backup(
+            tg=tg,
+            config_path=config_path,
+            pm_log_file=pm_log_file,
+            quizzes_file=quizzes_file,
+            quiz_state_file=quiz_state_file,
+            users_file=users_file,
+            backup_chat_id=backup_chat_id,
+        )
+
+        if success:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Бэкап успешно создан и отправлен в настроенный чат.",
+            )
+        else:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Ошибка при создании бэкапа. Проверьте логи для подробностей.",
+            )
         return
     elif cmd == "/course_members":
         if not is_admin:
