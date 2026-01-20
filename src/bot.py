@@ -1114,6 +1114,7 @@ def _create_backup(
     pm_log_file: str,
     quizzes_file: str,
     quiz_state_file: str,
+    users_file: str,
     backup_chat_id: int,
 ) -> bool:
     """
@@ -1138,6 +1139,7 @@ def _create_backup(
             (Path(config_path), "bot_config.json"),
             (Path(quizzes_file), "quizzes.json"),
             (Path(quiz_state_file), "quiz_state.json"),
+            (Path(users_file), "users.json"),
             (Path(pm_log_file), "private_messages.jsonl"),
         ]
 
@@ -2507,6 +2509,7 @@ def main(argv: list[str] | None = None) -> None:
                 pm_log_file=args.pm_log_file,
                 quizzes_file=args.quizzes_file,
                 quiz_state_file=args.quiz_state_file,
+                users_file=args.users_file,
                 backup_chat_id=backup_chat_id,
             )
             if success:
