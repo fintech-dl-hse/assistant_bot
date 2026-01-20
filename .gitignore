@@ -216,5 +216,7 @@ bot_config.json
 private_messages.jsonl
 quiz_state.json
 quizzes.json
+users.json
 venv/
 build
+backups/
