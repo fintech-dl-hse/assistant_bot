@@ -1284,7 +1284,7 @@ def _handle_message(
             except Exception:
                 logging.getLogger(__name__).warning("Failed to save quiz state file %s", quiz_state_file, exc_info=True)
             return
-        if _is_hidden_quiz(quiz):
+        if _is_hidden_quiz(quiz) and not is_admin:
             user_state["active_quiz_id"] = None
             try:
                 _save_quiz_state(quiz_state_file, state)
@@ -1400,6 +1400,8 @@ def _handle_message(
         "/quiz_list",
         "/quiz_delete",
         "/quiz",
+        "/quiz_ask",
+        "/skip",
         "/quiz_stat",
         "/quiz_admin_stat",
         "/me",
@@ -1419,6 +1421,7 @@ def _handle_message(
             "- /get_chat_id",
             "- /me <ФИО>",
             "- /quiz",
+            "- /skip",
             "- /quiz_stat",
         ]
         if is_admin:
@@ -1428,6 +1431,7 @@ def _handle_message(
             lines.append("- /quiz_create <quiz_id>")
             lines.append("- /quiz_list")
             lines.append("- /quiz_delete <quiz_id>")
+            lines.append("- /quiz_ask <quiz_id>")
             lines.append("- /quiz_admin_stat")
             lines.append("- /tokens_stat")
         _send_with_formatting_fallback(
@@ -1790,8 +1794,6 @@ def _handle_message(
             ]
             if not hidden:
                 buttons.append([{"text": "Отправить администраторам", "callback_data": f"quiz_send_admins:{qid}"}])
-                if not processed:
-                    buttons.append([{"text": "Отправить всем", "callback_data": f"quiz_send_all:{qid}"}])
             reply_markup = {"inline_keyboard": buttons}
             tg.send_message(
                 chat_id=chat_id,
@@ -1993,6 +1995,128 @@ def _handle_message(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             text=f"Квиз {qid}.\n\n{question}",
+        )
+        return
+    elif cmd == "/skip":
+        if chat_type != "private":
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Команда доступна только в личных сообщениях с ботом.",
+            )
+            return
+
+        state = _load_quiz_state(quiz_state_file)
+        user_state = _get_user_quiz_state(state, user_id)
+        active_quiz_id = user_state.get("active_quiz_id")
+        if active_quiz_id is None or str(active_quiz_id).strip() == "":
+            return
+        active_quiz_id = str(active_quiz_id).strip()
+
+        quizzes = _load_quizzes(quizzes_file)
+        quizzes = [q for q in quizzes if not _is_hidden_quiz(q)]
+        if not quizzes:
+            return
+
+        results = user_state.get("results")
+        if not isinstance(results, dict):
+            results = {}
+            user_state["results"] = results
+
+        next_quiz: Dict[str, Any] | None = None
+        for q in quizzes:
+            qid = str(q.get("id") or "").strip()
+            if not qid or qid == active_quiz_id:
+                continue
+            r = results.get(qid)
+            if isinstance(r, dict) and bool(r.get("correct")):
+                continue
+            next_quiz = q
+            break
+
+        if next_quiz is None:
+            for q in quizzes:
+                qid = str(q.get("id") or "").strip()
+                if not qid:
+                    continue
+                r = results.get(qid)
+                if isinstance(r, dict) and bool(r.get("correct")):
+                    continue
+                next_quiz = q
+                break
+
+        if next_quiz is None:
+            return
+
+        qid = str(next_quiz.get("id") or "").strip()
+        user_state["active_quiz_id"] = qid
+        try:
+            _save_quiz_state(quiz_state_file, state)
+        except Exception:
+            logging.getLogger(__name__).warning("Failed to save quiz state file %s", quiz_state_file, exc_info=True)
+
+        question = str(next_quiz.get("question") or "").strip()
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"Квиз {qid}.\n\n{question}",
+        )
+        return
+    elif cmd == "/quiz_ask":
+        if chat_type != "private":
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Команда доступна только в личных сообщениях с ботом.",
+            )
+            return
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        quiz_id = (args or "").strip()
+        if not quiz_id:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Usage: /quiz_ask <quiz_id>",
+            )
+            return
+
+        quizzes = _load_quizzes(quizzes_file)
+        quiz = next((q for q in quizzes if str(q.get("id") or "").strip() == quiz_id), None)
+        if not isinstance(quiz, dict):
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Квиз с id={quiz_id} не найден.",
+            )
+            return
+
+        state = _load_quiz_state(quiz_state_file)
+        user_state = _get_user_quiz_state(state, user_id)
+        user_state["active_quiz_id"] = str(quiz_id)
+        try:
+            _save_quiz_state(quiz_state_file, state)
+        except Exception:
+            logging.getLogger(__name__).warning("Failed to save quiz state file %s", quiz_state_file, exc_info=True)
+
+        question = str(quiz.get("question") or "").strip()
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"Квиз {quiz_id}.\n\n{question}",
         )
         return
     elif cmd == "/quiz_admin_stat":
