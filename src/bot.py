@@ -171,7 +171,6 @@ def _load_quizzes(quizzes_file: str) -> list[Dict[str, Any]]:
                     quiz["hidden"] = False
                 quiz["hidden"] = bool(quiz.get("hidden"))
                 quizzes.append(quiz)
-        quizzes.sort(key=_quiz_sort_key)
         return quizzes
     except Exception:
         logging.getLogger(__name__).warning(
@@ -186,10 +185,8 @@ def _save_quizzes(quizzes_file: str, quizzes: list[Dict[str, Any]]) -> None:
     path = Path(quizzes_file)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    quizzes_sorted = list(quizzes)
-    quizzes_sorted.sort(key=_quiz_sort_key)
     normalized: list[Dict[str, Any]] = []
-    for q in quizzes_sorted:
+    for q in list(quizzes):
         if not isinstance(q, dict):
             continue
         normalized.append(
