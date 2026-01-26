@@ -433,6 +433,9 @@ def _handle_callback_query(
     elif data.startswith("quiz_toggle_hidden:"):
         action = "toggle_hidden"
         quiz_id = data.split(":", 1)[1].strip()
+    elif data.startswith("quiz_edit:"):
+        action = "edit"
+        quiz_id = data.split(":", 1)[1].strip()
     else:
         try:
             tg.answer_callback_query(callback_query_id=callback_query_id, text="Неизвестная кнопка.")
@@ -459,6 +462,25 @@ def _handle_callback_query(
             tg.answer_callback_query(callback_query_id=callback_query_id, text="Квиз не найден.", show_alert=True)
         except Exception:
             logging.getLogger(__name__).debug("Failed to answer callback_query", exc_info=True)
+        return
+
+    if action == "edit":
+        _QUIZ_WIZARD_STATE[user_id] = {"stage": "await_question", "quiz_id": quiz_id, "mode": "edit"}
+        try:
+            tg.answer_callback_query(callback_query_id=callback_query_id, text="Редактирование запущено.")
+        except Exception:
+            logging.getLogger(__name__).debug("Failed to answer callback_query", exc_info=True)
+
+        msg = callback_query.get("message") or {}
+        if isinstance(msg, dict):
+            cb_chat_id = int((msg.get("chat") or {}).get("id") or 0)
+            cb_message_thread_id = int(msg.get("message_thread_id") or 0)
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=cb_chat_id,
+                message_thread_id=cb_message_thread_id,
+                text=f"Редактирование квиза {quiz_id}. Отправьте новый вопрос для квиза.",
+            )
         return
 
     if action == "toggle_hidden":
@@ -504,12 +526,11 @@ def _handle_callback_query(
 
             toggle_text = "Показать (hidden=false)" if hidden_now else "Скрыть (hidden=true)"
             buttons: list[list[Dict[str, str]]] = [
-                [{"text": toggle_text, "callback_data": f"quiz_toggle_hidden:{qid}"}]
+                [{"text": toggle_text, "callback_data": f"quiz_toggle_hidden:{qid}"}],
+                [{"text": "Редактировать", "callback_data": f"quiz_edit:{qid}"}],
             ]
             if not hidden_now:
                 buttons.append([{"text": "Отправить администраторам", "callback_data": f"quiz_send_admins:{qid}"}])
-                if not processed:
-                    buttons.append([{"text": "Отправить всем", "callback_data": f"quiz_send_all:{qid}"}])
 
             try:
                 tg.edit_message_text(
@@ -1283,11 +1304,12 @@ def _handle_message(
         cmd=cmd,
     )
 
-    # Continue quiz creation wizard (non-command messages)
+    # Continue quiz creation/edit wizard (non-command messages)
     if cmd == "" and chat_type == "private" and is_admin and user_id in _QUIZ_WIZARD_STATE:
         state = _QUIZ_WIZARD_STATE.get(user_id) or {}
         stage = str(state.get("stage") or "")
         quiz_id = str(state.get("quiz_id") or "").strip()
+        mode = str(state.get("mode") or "create")
         if stage == "await_question":
             question = text.strip()
             if not question:
@@ -1320,9 +1342,45 @@ def _handle_message(
                 return
 
             question = str(state.get("question") or "").strip()
-            quiz = {"id": quiz_id, "question": question, "answer": answer, "processed": False}
 
             quizzes = _load_quizzes(quizzes_file)
+            if mode == "edit":
+                target = None
+                for q in quizzes:
+                    if str(q.get("id") or "") == quiz_id:
+                        target = q
+                        break
+                if target is None:
+                    _QUIZ_WIZARD_STATE.pop(user_id, None)
+                    _send_with_formatting_fallback(
+                        tg=tg,
+                        chat_id=chat_id,
+                        message_thread_id=message_thread_id,
+                        text=f"Квиз с id={quiz_id} не найден. Редактирование отменено.",
+                    )
+                    return
+                target["question"] = question
+                target["answer"] = answer
+                try:
+                    _save_quizzes(quizzes_file=quizzes_file, quizzes=quizzes)
+                except Exception as e:
+                    _send_with_formatting_fallback(
+                        tg=tg,
+                        chat_id=chat_id,
+                        message_thread_id=message_thread_id,
+                        text=f"Не удалось сохранить квиз: {type(e).__name__}: {e}",
+                    )
+                    return
+                _QUIZ_WIZARD_STATE.pop(user_id, None)
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text=f"Готово. Квиз {quiz_id} обновлён.",
+                )
+                return
+
+            quiz = {"id": quiz_id, "question": question, "answer": answer, "processed": False}
             if any(str(q.get("id") or "") == quiz_id for q in quizzes):
                 _QUIZ_WIZARD_STATE.pop(user_id, None)
                 _send_with_formatting_fallback(
@@ -1984,7 +2042,7 @@ def _handle_message(
             )
             return
 
-        _QUIZ_WIZARD_STATE[user_id] = {"stage": "await_question", "quiz_id": quiz_id}
+        _QUIZ_WIZARD_STATE[user_id] = {"stage": "await_question", "quiz_id": quiz_id, "mode": "create"}
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
@@ -2020,7 +2078,8 @@ def _handle_message(
             hidden = _is_hidden_quiz(q)
             toggle_text = "Показать (hidden=false)" if hidden else "Скрыть (hidden=true)"
             buttons: list[list[Dict[str, str]]] = [
-                [{"text": toggle_text, "callback_data": f"quiz_toggle_hidden:{qid}"}]
+                [{"text": toggle_text, "callback_data": f"quiz_toggle_hidden:{qid}"}],
+                [{"text": "Редактировать", "callback_data": f"quiz_edit:{qid}"}],
             ]
             if not hidden:
                 buttons.append([{"text": "Отправить администраторам", "callback_data": f"quiz_send_admins:{qid}"}])
