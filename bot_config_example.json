@@ -1,5 +1,6 @@
 {
   "admin_users": [],
-  "course_chat_id": null
+  "course_chat_id": null,
+  "backup_chat_id": null
 }
 

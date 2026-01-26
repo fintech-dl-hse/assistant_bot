@@ -9,10 +9,13 @@ from datetime import datetime, timezone
 import math
 from pathlib import Path
 from typing import Any, Dict, Tuple
+import zipfile
+import threading
 
 import requests
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
+import schedule
 
 from telegram_client import TelegramClient
 
@@ -66,10 +69,11 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
     Expected schema:
       - admin_users: list[int|str] (Telegram user IDs and/or usernames)
       - course_chat_id: int|null (Telegram chat ID for the course)
+      - backup_chat_id: int|null (Telegram chat ID for backups)
 
     The file is intentionally read on every request.
     """
-    fallback: Dict[str, Any] = {"admin_users": [], "course_chat_id": None}
+    fallback: Dict[str, Any] = {"admin_users": [], "course_chat_id": None, "backup_chat_id": None}
     try:
         path = Path(config_path)
         if not path.exists():
@@ -95,7 +99,18 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
                 course_chat_id = None
         else:
             course_chat_id = None
-        return {"admin_users": admin_users, "course_chat_id": course_chat_id}
+        backup_chat_id_raw = data.get("backup_chat_id", None)
+        backup_chat_id: int | None
+        if isinstance(backup_chat_id_raw, int):
+            backup_chat_id = backup_chat_id_raw
+        elif isinstance(backup_chat_id_raw, str):
+            try:
+                backup_chat_id = int(backup_chat_id_raw.strip())
+            except ValueError:
+                backup_chat_id = None
+        else:
+            backup_chat_id = None
+        return {"admin_users": admin_users, "course_chat_id": course_chat_id, "backup_chat_id": backup_chat_id}
     except Exception:
         logging.getLogger(__name__).warning(
             "Failed to load config %s; using defaults",
@@ -117,6 +132,7 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
     payload = {
         "admin_users": settings.get("admin_users") or [],
         "course_chat_id": settings.get("course_chat_id", None),
+        "backup_chat_id": settings.get("backup_chat_id", None),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
@@ -1092,6 +1108,81 @@ def _judge_quiz_answer(
         return student_answer.strip() == reference_answer.strip(), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
+def _create_backup(
+    tg: TelegramClient,
+    config_path: str,
+    pm_log_file: str,
+    quizzes_file: str,
+    quiz_state_file: str,
+    users_file: str,
+    backup_chat_id: int,
+) -> bool:
+    """
+    Create a backup of all bot settings and state files, and send it to the backup chat.
+
+    Returns True if backup was created and sent successfully, False otherwise.
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Create backup directory
+        backup_dir = Path("backups")
+        backup_dir.mkdir(exist_ok=True)
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"bot_backup_{timestamp}.zip"
+        backup_path = backup_dir / backup_filename
+
+        # List of files to backup
+        files_to_backup = [
+            (Path(config_path), "bot_config.json"),
+            (Path(quizzes_file), "quizzes.json"),
+            (Path(quiz_state_file), "quiz_state.json"),
+            (Path(users_file), "users.json"),
+            (Path(pm_log_file), "private_messages.jsonl"),
+        ]
+
+        # Create zip archive
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_path, archive_name in files_to_backup:
+                if file_path.exists():
+                    zipf.write(file_path, archive_name)
+                    logger.info(f"Added {file_path} to backup as {archive_name}")
+                else:
+                    logger.warning(f"File {file_path} does not exist, skipping")
+
+        # Send backup to Telegram
+        with open(backup_path, 'rb') as backup_file:
+            resp = tg._request(
+                method="POST",
+                endpoint="sendDocument",
+                data={
+                    "chat_id": backup_chat_id,
+                    "caption": f"Еженедельный бэкап бота от {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                },
+                files={"document": (backup_filename, backup_file, "application/zip")},
+                timeout=30,
+            )
+
+        if resp.status_code == 200:
+            logger.info(f"Backup sent successfully to chat {backup_chat_id}")
+            # Clean up old backups (keep only last 5)
+            backup_files = sorted(backup_dir.glob("bot_backup_*.zip"))
+            if len(backup_files) > 5:
+                for old_backup in backup_files[:-5]:
+                    old_backup.unlink()
+                    logger.info(f"Deleted old backup: {old_backup}")
+            return True
+        else:
+            logger.error(f"Failed to send backup: status code {resp.status_code}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to create backup: {type(e).__name__}: {e}", exc_info=True)
+        return False
+
+
 def _is_quiz_question_paraphrase(
     llm: OpenAI,
     *,
@@ -1404,6 +1495,8 @@ def _handle_message(
         "/skip",
         "/quiz_stat",
         "/quiz_admin_stat",
+        "/set_backup_chat_id",
+        "/backup",
         "/me",
     }:
         return
@@ -1434,6 +1527,8 @@ def _handle_message(
             lines.append("- /quiz_ask <quiz_id>")
             lines.append("- /quiz_admin_stat")
             lines.append("- /tokens_stat")
+            lines.append("- /set_backup_chat_id <chat_id>")
+            lines.append("- /backup")
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
@@ -1631,6 +1726,141 @@ def _handle_message(
             message_thread_id=message_thread_id,
             text=f"Готово. Установил чат курса: {course_chat_id}",
         )
+        return
+    elif cmd == "/set_backup_chat_id":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        raw_chat_id = (args or "").strip()
+        if not raw_chat_id:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Usage: /set_backup_chat_id <chat_id>",
+            )
+            return
+
+        try:
+            backup_chat_id = int(raw_chat_id)
+        except ValueError:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Usage: /set_backup_chat_id <chat_id> (chat_id должен быть числом)",
+            )
+            return
+
+        if bot_user_id <= 0:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Не удалось определить bot_id через Telegram API. Попробуйте перезапустить бота.",
+            )
+            return
+
+        try:
+            member = tg.get_chat_member(chat_id=backup_chat_id, user_id=bot_user_id)
+            status = str((member.get("result") or {}).get("status") or "")
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Не удалось проверить права бота в чате: {type(e).__name__}: {e}",
+            )
+            return
+
+        if status not in {"administrator", "creator", "member"}:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=(
+                    "Бот должен быть участником чата.\n"
+                    f"Текущий статус: {status or 'unknown'}"
+                ),
+            )
+            return
+
+        settings["backup_chat_id"] = backup_chat_id
+        try:
+            _save_settings(config_path=config_path, settings=settings)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Не удалось сохранить конфиг: {type(e).__name__}: {e}",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"Готово. Установил чат для бэкапов: {backup_chat_id}",
+        )
+        return
+    elif cmd == "/backup":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        backup_chat_id = settings.get("backup_chat_id")
+        if not isinstance(backup_chat_id, int) or backup_chat_id == 0:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Чат для бэкапов не настроен. Сначала выполните: /set_backup_chat_id <chat_id>",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text="Начинаю создание бэкапа...",
+        )
+
+        success = _create_backup(
+            tg=tg,
+            config_path=config_path,
+            pm_log_file=pm_log_file,
+            quizzes_file=quizzes_file,
+            quiz_state_file=quiz_state_file,
+            users_file=users_file,
+            backup_chat_id=backup_chat_id,
+        )
+
+        if success:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Бэкап успешно создан и отправлен в настроенный чат.",
+            )
+        else:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Ошибка при создании бэкапа. Проверьте логи для подробностей.",
+            )
         return
     elif cmd == "/course_members":
         if not is_admin:
@@ -2443,6 +2673,43 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Bot started: %s", bot_username or None)
     except Exception:
         logger.info("Bot started")
+
+    # Setup backup scheduler
+    def scheduled_backup():
+        """Wrapper function for scheduled backups."""
+        settings = _load_settings(args.config)
+        backup_chat_id = settings.get("backup_chat_id")
+        if isinstance(backup_chat_id, int) and backup_chat_id != 0:
+            logger.info("Running scheduled backup...")
+            success = _create_backup(
+                tg=tg,
+                config_path=args.config,
+                pm_log_file=args.pm_log_file,
+                quizzes_file=args.quizzes_file,
+                quiz_state_file=args.quiz_state_file,
+                users_file=args.users_file,
+                backup_chat_id=backup_chat_id,
+            )
+            if success:
+                logger.info("Scheduled backup completed successfully")
+            else:
+                logger.error("Scheduled backup failed")
+        else:
+            logger.warning("Backup chat not configured, skipping scheduled backup")
+
+    # Schedule backup every Monday at 10:00 AM
+    schedule.every().monday.at("10:00").do(scheduled_backup)
+    logger.info("Backup scheduler configured: every Monday at 10:00 AM")
+
+    # Run scheduler in a separate thread
+    def run_scheduler():
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    logger.info("Backup scheduler thread started")
 
     offset = 0
     while True:
