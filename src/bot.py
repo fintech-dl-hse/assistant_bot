@@ -2739,8 +2739,8 @@ def _handle_message(
         for template in templates:
             full_name = template.replace("{github_nickname}", github_nick)
             if "/" not in full_name:
-                results.append(f"{full_name} — неверный шаблон (нет /)")
-                continue
+                template = "fintech-dl-hse/" + template
+
             owner, repo = full_name.split("/", 1)
             owner = owner.strip()
             repo = repo.strip()
