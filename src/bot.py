@@ -17,6 +17,7 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 import schedule
 
+from github_client import repo_exists as github_repo_exists
 from telegram_client import TelegramClient
 
 README_URL = "https://raw.githubusercontent.com/fintech-dl-hse/course/refs/heads/main/README.md"
@@ -70,10 +71,16 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - admin_users: list[int|str] (Telegram user IDs and/or usernames)
       - course_chat_id: int|null (Telegram chat ID for the course)
       - backup_chat_id: int|null (Telegram chat ID for backups)
+      - hw_templates: list[str] (e.g. "fintech-dl-hse/hw-mlp-{github_nickname}")
 
     The file is intentionally read on every request.
     """
-    fallback: Dict[str, Any] = {"admin_users": [], "course_chat_id": None, "backup_chat_id": None}
+    fallback: Dict[str, Any] = {
+        "admin_users": [],
+        "course_chat_id": None,
+        "backup_chat_id": None,
+        "hw_templates": [],
+    }
     try:
         path = Path(config_path)
         if not path.exists():
@@ -110,7 +117,18 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
                 backup_chat_id = None
         else:
             backup_chat_id = None
-        return {"admin_users": admin_users, "course_chat_id": course_chat_id, "backup_chat_id": backup_chat_id}
+        hw_templates_raw = data.get("hw_templates", [])
+        hw_templates = (
+            [str(t).strip() for t in hw_templates_raw if isinstance(t, str) and t.strip()]
+            if isinstance(hw_templates_raw, list)
+            else []
+        )
+        return {
+            "admin_users": admin_users,
+            "course_chat_id": course_chat_id,
+            "backup_chat_id": backup_chat_id,
+            "hw_templates": hw_templates,
+        }
     except Exception:
         logging.getLogger(__name__).warning(
             "Failed to load config %s; using defaults",
@@ -133,6 +151,7 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "admin_users": settings.get("admin_users") or [],
         "course_chat_id": settings.get("course_chat_id", None),
         "backup_chat_id": settings.get("backup_chat_id", None),
+        "hw_templates": settings.get("hw_templates") or [],
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
@@ -380,9 +399,14 @@ def _save_users(users_file: str, data: Dict[str, Any]) -> None:
         u = users.get(user_key)
         if not isinstance(u, dict):
             continue
+        github_changes = u.get("github_changes")
+        if not isinstance(github_changes, int) or github_changes < 0:
+            github_changes = 0
         normalized_users[str(user_key)] = {
             "fio": str(u.get("fio") or "").strip(),
             "username": str(u.get("username") or "").strip(),
+            "github": str(u.get("github") or "").strip(),
+            "github_changes": github_changes,
         }
 
     payload = {"users": normalized_users}
@@ -1553,6 +1577,9 @@ def _handle_message(
         "/set_backup_chat_id",
         "/backup",
         "/me",
+        "/github",
+        "/invit",
+        "/hw_templates",
     }:
         return
 
@@ -1565,9 +1592,11 @@ def _handle_message(
         lines = [
             "Доступные команды:",
             "- /help",
-            "- /qa <вопрос>",
+            "- /qa <вопрос> - задать организационный попрос по курсу (в контексте README курса)",
             "- /get_chat_id",
             "- /me <ФИО>",
+            "- /github [nickname] — привязать или показать GitHub",
+            "- /invit <github_nickname> — проверить репозитории ДЗ",
             "- /quiz",
             "- /skip",
             "- /quiz_stat",
@@ -1584,6 +1613,7 @@ def _handle_message(
             lines.append("- /tokens_stat")
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
+            lines.append("- /hw_templates list | add <template> | remove <N>")
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
@@ -2609,6 +2639,231 @@ def _handle_message(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             text=f"Готово. Сохранено ФИО: {fio}\nUsername: @{username}" if username else f"Готово. Сохранено ФИО: {fio}",
+        )
+        return
+    elif cmd == "/github":
+        if chat_type != "private":
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Команда доступна только в личных сообщениях с ботом.",
+            )
+            return
+
+        github_nick = (args or "").strip().lstrip("@")
+        users_data = _load_users(users_file)
+        users = users_data.get("users")
+        if not isinstance(users, dict):
+            users = {}
+            users_data["users"] = users
+
+        user_key = str(user_id)
+        if user_key not in users:
+            users[user_key] = {}
+
+        if not github_nick:
+            linked = str(users[user_key].get("github") or "").strip()
+            if linked:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text=f"Привязанный GitHub: https://github.com/{linked}",
+                )
+            else:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="GitHub не привязан. Используйте: /github <nickname>",
+                )
+            return
+
+        users[user_key]["github"] = github_nick
+        users[user_key]["github_changes"] = int(users[user_key].get("github_changes") or 0) + 1
+        users[user_key]["fio"] = str(users[user_key].get("fio") or "").strip()
+        users[user_key]["username"] = str(users[user_key].get("username") or username).strip()
+
+        try:
+            _save_users(users_file, users_data)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Не удалось сохранить данные: {type(e).__name__}: {e}",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"Готово. GitHub привязан: https://github.com/{github_nick}",
+        )
+        return
+    elif cmd == "/invit":
+        github_nick = (args or "").strip().lstrip("@")
+        if not github_nick:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Usage: /invit <github_nickname>",
+            )
+            return
+
+        templates: list[str] = list(settings.get("hw_templates") or [])
+        if not templates:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Шаблоны репозиториев ДЗ не настроены. Обратитесь к администратору.",
+            )
+            return
+
+        results: list[str] = []
+        for template in templates:
+            full_name = template.replace("{github_nickname}", github_nick)
+            if "/" not in full_name:
+                results.append(f"{full_name} — неверный шаблон (нет /)")
+                continue
+            owner, repo = full_name.split("/", 1)
+            owner = owner.strip()
+            repo = repo.strip()
+            if not owner or not repo:
+                results.append(f"{full_name} — неверный шаблон")
+                continue
+            exists = github_repo_exists(owner=owner, repo=repo)
+            status = "✅" if exists else "❌"
+            results.append(f"{status} https://github.com/{owner}/{repo}")
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=f"GitHub: {github_nick}\n\n" + "\n".join(results),
+        )
+        return
+    elif cmd == "/hw_templates":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        sub = (args or "").strip().lower()
+        parts = sub.split(maxsplit=1)
+        subcmd = parts[0] if parts else ""
+        subargs = parts[1] if len(parts) > 1 else ""
+
+        templates: list[str] = list(settings.get("hw_templates") or [])
+
+        if subcmd == "list":
+            if not templates:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Шаблоны ДЗ пусты. Добавьте: /hw_templates add owner/repo-{github_nickname}",
+                )
+            else:
+                lines = [f"{i}. {t}" for i, t in enumerate(templates, start=1)]
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Шаблоны репозиториев ДЗ:\n\n" + "\n".join(lines),
+                )
+            return
+
+        if subcmd == "add":
+            template = subargs.strip()
+            if not template or "{github_nickname}" not in template:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Usage: /hw_templates add <owner/repo-{github_nickname}>",
+                )
+                return
+            if template in templates:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Такой шаблон уже есть.",
+                )
+                return
+            templates.append(template)
+            settings["hw_templates"] = templates
+            try:
+                _save_settings(config_path, settings)
+            except Exception as e:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text=f"Не удалось сохранить конфиг: {type(e).__name__}: {e}",
+                )
+                return
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Добавлен шаблон: {template}",
+            )
+            return
+
+        if subcmd == "remove":
+            idx_str = subargs.strip()
+            if not idx_str or not idx_str.isdigit():
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Usage: /hw_templates remove <N> (номер из list)",
+                )
+                return
+            idx = int(idx_str)
+            if idx < 1 or idx > len(templates):
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text=f"Номер должен быть от 1 до {len(templates)}.",
+                )
+                return
+            removed = templates.pop(idx - 1)
+            settings["hw_templates"] = templates
+            try:
+                _save_settings(config_path, settings)
+            except Exception as e:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text=f"Не удалось сохранить конфиг: {type(e).__name__}: {e}",
+                )
+                return
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Удалён шаблон: {removed}",
+            )
+            return
+
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text="Usage: /hw_templates list | add <template> | remove <N>",
         )
         return
     elif cmd == "/qa":
