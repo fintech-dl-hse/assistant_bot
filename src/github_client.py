@@ -12,6 +12,9 @@ import requests
 
 GITHUB_API_BASE = "https://api.github.com"
 
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
+
 
 def _get_token() -> Optional[str]:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GITHUB_ACCESS_TOKEN")
@@ -42,13 +45,15 @@ def repo_exists(owner: str, repo: str) -> bool:
         headers["Authorization"] = f"Bearer {token}"
 
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}"
+    _log.debug("Checking repo exists: %s/%s", owner, repo)
     try:
         resp = requests.get(url, headers=headers, timeout=10)
+        _log.debug("GitHub API %s -> %s for %s/%s", url, resp.status_code, owner, repo)
         if resp.status_code == 200:
             return True
         if resp.status_code == 404:
             return False
-        logging.getLogger(__name__).warning(
+        _log.warning(
             "GitHub API %s returned %s for %s/%s",
             url,
             resp.status_code,
@@ -57,7 +62,7 @@ def repo_exists(owner: str, repo: str) -> bool:
         )
         return False
     except Exception:
-        logging.getLogger(__name__).warning(
+        _log.warning(
             "Failed to check repo %s/%s",
             owner,
             repo,

@@ -1596,7 +1596,7 @@ def _handle_message(
             "- /get_chat_id",
             "- /me <ФИО>",
             "- /github [nickname] — привязать или показать GitHub",
-            "- /invit <github_nickname> — проверить репозитории ДЗ",
+            "- /invit — проверить репозитории ДЗ",
             "- /quiz",
             "- /skip",
             "- /quiz_stat",
@@ -2704,13 +2704,19 @@ def _handle_message(
         )
         return
     elif cmd == "/invit":
-        github_nick = (args or "").strip().lstrip("@")
+        users_data = _load_users(users_file)
+        users = users_data.get("users")
+        if not isinstance(users, dict):
+            users = {}
+        user_key = str(user_id)
+        github_nick = (users.get(user_key) or {}).get("github") or ""
+        github_nick = str(github_nick).strip().lstrip("@")
         if not github_nick:
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
-                text="Usage: /invit <github_nickname>",
+                text="GitHub не привязан. Сначала привяжите: /github <nickname>",
             )
             return
 
