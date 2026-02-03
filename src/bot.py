@@ -17,7 +17,12 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 import schedule
 
-from github_client import repo_exists as github_repo_exists
+from github_client import (
+    add_collaborator as github_add_collaborator,
+    is_collaborator as github_is_collaborator,
+    list_repo_invitations as github_list_repo_invitations,
+    repo_exists as github_repo_exists,
+)
 from telegram_client import TelegramClient
 
 README_URL = "https://raw.githubusercontent.com/fintech-dl-hse/course/refs/heads/main/README.md"
@@ -2742,9 +2747,36 @@ def _handle_message(
             if not owner or not repo:
                 results.append(f"{full_name} — неверный шаблон")
                 continue
+            repo_url = f"https://github.com/{owner}/{repo}"
             exists = github_repo_exists(owner=owner, repo=repo)
-            status = "✅" if exists else "❌"
-            results.append(f"{status} https://github.com/{owner}/{repo}")
+            if not exists:
+                results.append(f"❌ {repo_url} — вы не приняли задание")
+                continue
+            if github_is_collaborator(owner=owner, repo=repo, username=github_nick):
+                results.append(f"✅ {repo_url}")
+                continue
+            invitations = github_list_repo_invitations(owner=owner, repo=repo)
+            invite_for_user = next(
+                (
+                    inv
+                    for inv in invitations
+                    if (inv.get("invitee") or {}).get("login", "").lower()
+                    == github_nick.lower()
+                ),
+                None,
+            )
+            if invite_for_user:
+                inv_link = invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
+                results.append(f"📨 {repo_url}\nПриглашение: {inv_link}")
+                continue
+            if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
+                inv_url = f"https://github.com/{owner}/{repo}/invitations"
+                results.append(
+                    f"📨 {repo_url}\nПриглашение отправлено. Примите: {inv_url}"
+                )
+            else:
+                results.append(f"❌ {repo_url} — не удалось отправить приглашение")
+                continue
 
         _send_with_formatting_fallback(
             tg=tg,
