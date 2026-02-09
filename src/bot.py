@@ -795,6 +795,105 @@ def _is_admin(settings: Dict[str, Any], user_id: int, username: str) -> bool:
     return False
 
 
+COURSE_REPO_OWNER = "fintech-dl-hse"
+COURSE_REPO_NAME = "course"
+COURSE_REPO_BRANCH = "main"
+SEMINARS_PATH = "seminars"
+LECTURES_PATH = "lectures"
+
+
+def _get_latest_seminar_notebook_path() -> str | None:
+    """
+    Запрашивает через GitHub API список ноутбуков в seminars и возвращает путь
+    к последнему по имени (например seminars/04_cnn/04_seminar_cnn.ipynb).
+
+    Returns:
+        Путь вида "seminars/XX_topic/XX_seminar_....ipynb" или None при ошибке.
+    """
+    base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{SEMINARS_PATH}"
+    try:
+        r = requests.get(base_url, timeout=10)
+        if r.status_code != 200:
+            return None
+        items = r.json()
+        if not isinstance(items, list):
+            return None
+        notebook_paths: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") != "dir":
+                continue
+            name = (item.get("name") or "").strip()
+            if not name or name.startswith(".") or name.startswith("_"):
+                continue
+            sub_url = f"{base_url}/{name}"
+            sub = requests.get(sub_url, timeout=10)
+            if sub.status_code != 200:
+                continue
+            sub_items = sub.json()
+            if not isinstance(sub_items, list):
+                continue
+            for f in sub_items:
+                if not isinstance(f, dict):
+                    continue
+                if f.get("type") != "file":
+                    continue
+                fn = (f.get("name") or "").strip()
+                if fn.endswith(".ipynb"):
+                    notebook_paths.append(f"{SEMINARS_PATH}/{name}/{fn}")
+        if not notebook_paths:
+            return None
+        notebook_paths.sort()
+        return notebook_paths[-1]
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "Failed to fetch latest seminar notebook from GitHub",
+            exc_info=True,
+        )
+        return None
+
+
+def _get_latest_lecture_url() -> str | None:
+    """
+    Запрашивает через GitHub API содержимое lectures и возвращает ссылку
+    на последний файл лекции по имени (например .pdf).
+
+    Returns:
+        URL вида https://github.com/.../blob/main/lectures/26.02.09.DL04.pdf или None.
+    """
+    base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{LECTURES_PATH}"
+    try:
+        r = requests.get(base_url, timeout=10)
+        if r.status_code != 200:
+            return None
+        items = r.json()
+        if not isinstance(items, list):
+            return None
+        files: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") != "file":
+                continue
+            name = (item.get("name") or "").strip()
+            if not name or name == "README.md":
+                continue
+            if name.endswith(".pdf"):
+                files.append(name)
+        if not files:
+            return None
+        files.sort()
+        path = f"{LECTURES_PATH}/{files[-1]}"
+        return f"https://github.com/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/blob/{COURSE_REPO_BRANCH}/{path}"
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "Failed to fetch latest lecture from GitHub",
+            exc_info=True,
+        )
+        return None
+
+
 def _is_command_for_this_bot(text: str, bot_username: str) -> bool:
     """
     True if `text` looks like a bot command that is intended for THIS bot.
@@ -1585,6 +1684,7 @@ def _handle_message(
         "/github",
         "/invit",
         "/hw_templates",
+        "/teach",
     }:
         return
 
@@ -1619,6 +1719,7 @@ def _handle_message(
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
             lines.append("- /hw_templates list | add <template> | remove <N>")
+            lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
@@ -1732,6 +1833,41 @@ def _handle_message(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             text=f"Готово. Добавил администратора: {new_admin_id}",
+        )
+        return
+    elif cmd == "/teach":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+        lines: list[str] = []
+        path = _get_latest_seminar_notebook_path()
+        if path:
+            colab_url = (
+                f"https://colab.research.google.com/github/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/"
+                f"blob/{COURSE_REPO_BRANCH}/{path}"
+            )
+            lines.append(f"Семинар (Colab): {colab_url}")
+        lecture_url = _get_latest_lecture_url()
+        if lecture_url:
+            lines.append(f"Лекция: {lecture_url}")
+        if not lines:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Не удалось получить данные из репозитория курса.",
+            )
+            return
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text="\n".join(lines),
         )
         return
     elif cmd == "/course_chat":
