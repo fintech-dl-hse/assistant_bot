@@ -836,13 +836,21 @@ def _get_latest_seminar_notebook_path() -> str | None:
     Returns:
         Путь вида "seminars/XX_topic/XX_seminar_....ipynb" или None при ошибке.
     """
+    log = logging.getLogger(__name__)
     base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{SEMINARS_PATH}"
     try:
         r = requests.get(base_url, timeout=10)
         if r.status_code != 200:
+            log.warning(
+                "teach/seminars: GitHub API %s вернул %s, body=%s",
+                base_url,
+                r.status_code,
+                (r.text[:500] if r.text else ""),
+            )
             return None
         items = r.json()
         if not isinstance(items, list):
+            log.warning("teach/seminars: ответ API не список, type=%s", type(items).__name__)
             return None
         notebook_paths: list[str] = []
         for item in items:
@@ -856,6 +864,7 @@ def _get_latest_seminar_notebook_path() -> str | None:
             sub_url = f"{base_url}/{name}"
             sub = requests.get(sub_url, timeout=10)
             if sub.status_code != 200:
+                log.debug("teach/seminars: подпапка %s вернула %s", name, sub.status_code)
                 continue
             sub_items = sub.json()
             if not isinstance(sub_items, list):
@@ -869,12 +878,13 @@ def _get_latest_seminar_notebook_path() -> str | None:
                 if fn.endswith(".ipynb"):
                     notebook_paths.append(f"{SEMINARS_PATH}/{name}/{fn}")
         if not notebook_paths:
+            log.warning("teach/seminars: в репозитории не найдено ни одного .ipynb в %s", SEMINARS_PATH)
             return None
         notebook_paths.sort()
         return notebook_paths[-1]
     except Exception:
-        logging.getLogger(__name__).debug(
-            "Failed to fetch latest seminar notebook from GitHub",
+        log.warning(
+            "teach/seminars: ошибка при запросе списка ноутбуков с GitHub",
             exc_info=True,
         )
         return None
@@ -888,13 +898,21 @@ def _get_latest_lecture_url() -> str | None:
     Returns:
         URL вида https://github.com/.../blob/main/lectures/26.02.09.DL04.pdf или None.
     """
+    log = logging.getLogger(__name__)
     base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{LECTURES_PATH}"
     try:
         r = requests.get(base_url, timeout=10)
         if r.status_code != 200:
+            log.warning(
+                "teach/lectures: GitHub API %s вернул %s, body=%s",
+                base_url,
+                r.status_code,
+                (r.text[:500] if r.text else ""),
+            )
             return None
         items = r.json()
         if not isinstance(items, list):
+            log.warning("teach/lectures: ответ API не список, type=%s", type(items).__name__)
             return None
         files: list[str] = []
         for item in items:
@@ -908,13 +926,14 @@ def _get_latest_lecture_url() -> str | None:
             if name.endswith(".pdf"):
                 files.append(name)
         if not files:
+            log.warning("teach/lectures: в папке %s не найдено .pdf файлов", LECTURES_PATH)
             return None
         files.sort()
         path = f"{LECTURES_PATH}/{files[-1]}"
         return f"https://github.com/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/blob/{COURSE_REPO_BRANCH}/{path}"
     except Exception:
-        logging.getLogger(__name__).debug(
-            "Failed to fetch latest lecture from GitHub",
+        log.warning(
+            "teach/lectures: ошибка при запросе списка лекций с GitHub",
             exc_info=True,
         )
         return None
@@ -1959,6 +1978,12 @@ def _handle_message(
                     new_title=form_title,
                     credentials_path=creds_path,
                 )
+                if not form_result:
+                    logging.getLogger(__name__).warning(
+                        "teach/form: создание формы не удалось (folder_id=%s, title=%s)",
+                        folder_id,
+                        form_title,
+                    )
             except DriveStorageQuotaExceeded:
                 form_result = None
                 _form_quota_msg = True
@@ -2001,6 +2026,17 @@ def _handle_message(
             )
 
         if not md_lines:
+            _teach_log = logging.getLogger(__name__)
+            _teach_log.warning(
+                "teach: ничего не удалось получить: path=%s, colab_url=%s, lecture_url=%s, form_result=%s, "
+                "folder_id=%s, creds_path=%s",
+                path,
+                "ok" if colab_url else None,
+                "ok" if lecture_url else None,
+                "ok" if form_result else None,
+                folder_id or None,
+                "set" if creds_path else None,
+            )
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
