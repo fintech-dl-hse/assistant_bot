@@ -35,6 +35,45 @@ def _headers() -> Dict[str, str]:
     return h
 
 
+def user_exists(username: str) -> bool:
+    """
+    Check if a GitHub user exists.
+
+    Args:
+        username: GitHub username to check.
+
+    Returns:
+        True if GET /users/{username} returns 200, False for 404 or on error.
+    """
+    username = (username or "").strip().lstrip("@")
+    if not username:
+        return False
+
+    url = f"{GITHUB_API_BASE}/users/{username}"
+    _log.debug("Checking user exists: %s", username)
+    try:
+        resp = requests.get(url, headers=_headers(), timeout=10)
+        _log.debug("GitHub API %s -> %s for user %s", url, resp.status_code, username)
+        if resp.status_code == 200:
+            return True
+        if resp.status_code == 404:
+            return False
+        _log.warning(
+            "GitHub API %s returned %s for user %s",
+            url,
+            resp.status_code,
+            username,
+        )
+        return False
+    except Exception:
+        _log.warning(
+            "Failed to check user %s",
+            username,
+            exc_info=True,
+        )
+        return False
+
+
 def repo_exists(owner: str, repo: str) -> bool:
     """
     Check if a GitHub repository exists (and is accessible with the configured token).

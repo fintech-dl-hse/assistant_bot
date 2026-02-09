@@ -26,6 +26,7 @@ from github_client import (
     is_collaborator as github_is_collaborator,
     list_repo_invitations as github_list_repo_invitations,
     repo_exists as github_repo_exists,
+    user_exists as github_user_exists,
 )
 from telegram_client import TelegramClient
 
@@ -2886,6 +2887,15 @@ def _handle_message(
                     message_thread_id=message_thread_id,
                     text="GitHub не привязан. Используйте: /github <nickname>",
                 )
+            return
+
+        if not github_user_exists(github_nick):
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Пользователь GitHub с ником '{github_nick}' не найден. Проверьте правильность написания.",
+            )
             return
 
         users[user_key]["github"] = github_nick
