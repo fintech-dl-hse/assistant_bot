@@ -1959,13 +1959,13 @@ def _handle_message(
 
         # Собираем сообщение в MarkdownV2 с эмодзи и кликабельными ссылками
         md_lines: list[str] = []
-        if colab_url:
-            md_lines.append(
-                "📓 " + _escape_markdown_v2_plain("Семинар (Colab): ") + _md2_link("открыть в Colab", colab_url)
-            )
         if lecture_url:
             md_lines.append(
                 "📖 " + _escape_markdown_v2_plain("Лекция: ") + _md2_link("открыть PDF", lecture_url)
+            )
+        if colab_url:
+            md_lines.append(
+                "📓 " + _escape_markdown_v2_plain("Семинар (Colab): ") + _md2_link("открыть в Colab", colab_url)
             )
         if form_result:
             edit_url, view_url = form_result
