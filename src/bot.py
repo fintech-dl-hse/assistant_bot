@@ -1139,6 +1139,27 @@ def _fetch_readme() -> str:
 
 
 
+def _escape_markdown_v2_plain(chunk: str) -> str:
+    """
+    Экранирует произвольный текст для использования в Telegram MarkdownV2
+    (вне ссылок и блоков кода). Для ссылок используйте _md2_link.
+    """
+    if not chunk:
+        return chunk
+    chunk = chunk.replace("\\", "\\\\")
+    return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", chunk)
+
+
+def _md2_link(label: str, url: str) -> str:
+    """
+    Формирует кликабельную ссылку в формате MarkdownV2.
+    В URL экранируется только ')'.
+    """
+    label_escaped = _escape_markdown_v2_plain(label)
+    url_escaped = url.replace("\\", "\\\\").replace(")", "\\)")
+    return f"[{label_escaped}]({url_escaped})"
+
+
 def _escape_markdown_v2(text: str) -> str:
     """
     Escapes text for Telegram MarkdownV2.
@@ -1179,7 +1200,30 @@ def _send_with_formatting_fallback(
     chat_id: int,
     message_thread_id: int,
     text: str,
+    *,
+    markdown_v2_raw: bool = False,
 ) -> bool:
+    """
+    Отправляет сообщение. По умолчанию экранирует текст и шлёт как MarkdownV2.
+    Если markdown_v2_raw=True, текст считается уже готовым MarkdownV2 (со ссылками и т.д.).
+    """
+    if markdown_v2_raw:
+        resp = tg.send_message(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            parse_mode="MarkdownV2",
+            message=text,
+        )
+        if getattr(resp, "status_code", 500) == 200:
+            return True
+        tg.send_message(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            parse_mode=None,
+            message=text,
+        )
+        return True
+
     escaped = _escape_markdown_v2(text)
     resp2 = tg.send_message(
         chat_id=chat_id,
@@ -1889,23 +1933,20 @@ def _handle_message(
                 text="Недостаточно прав: команда доступна только администраторам.",
             )
             return
-        lines: list[str] = []
         path = _get_latest_seminar_notebook_path()
+        colab_url: str | None = None
         if path:
             colab_url = (
                 f"https://colab.research.google.com/github/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/"
                 f"blob/{COURSE_REPO_BRANCH}/{path}"
             )
-            lines.append(f"Семинар (Colab): {colab_url}")
         lecture_url = _get_latest_lecture_url()
-        if lecture_url:
-            lines.append(f"Лекция: {lecture_url}")
-        # Форма обратной связи: клонировать шаблон из Drive, название [DL{год}] {неделя} неделя
         folder_id = (
             (settings.get("drive_feedback_folder_id") or "").strip()
             or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
         )
         creds_path = drive_get_credentials_path(settings)
+        form_result: tuple[str, str] | None = None
         if folder_id and creds_path and path:
             week = _seminar_week_from_notebook_path(path)
             year_short = datetime.now(timezone.utc).year % 100
@@ -1915,15 +1956,35 @@ def _handle_message(
                 new_title=form_title,
                 credentials_path=creds_path,
             )
-            if form_result:
-                edit_url, view_url = form_result
-                lines.append(f"Форма (раздача): {view_url}")
-                lines.append(f"Форма (редактировать): {edit_url}")
-            else:
-                lines.append("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
+
+        # Собираем сообщение в MarkdownV2 с эмодзи и кликабельными ссылками
+        md_lines: list[str] = []
+        if colab_url:
+            md_lines.append(
+                "📓 " + _escape_markdown_v2_plain("Семинар (Colab): ") + _md2_link("открыть в Colab", colab_url)
+            )
+        if lecture_url:
+            md_lines.append(
+                "📖 " + _escape_markdown_v2_plain("Лекция: ") + _md2_link("открыть PDF", lecture_url)
+            )
+        if form_result:
+            edit_url, view_url = form_result
+            md_lines.append(
+                "📋 " + _escape_markdown_v2_plain("Форма (раздача): ") + _md2_link("заполнить", view_url)
+            )
+            md_lines.append(
+                "✏️ " + _escape_markdown_v2_plain("Форма (редактировать): ") + _md2_link("редактировать", edit_url)
+            )
+        elif folder_id and creds_path and path:
+            md_lines.append(
+                "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
+            )
         elif (folder_id or creds_path) and not (folder_id and creds_path):
-            lines.append("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
-        if not lines:
+            md_lines.append(
+                "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
+            )
+
+        if not md_lines:
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
@@ -1931,11 +1992,13 @@ def _handle_message(
                 text="Не удалось получить данные из репозитория курса.",
             )
             return
+        teach_text = "\n".join(md_lines)
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
-            text="\n".join(lines),
+            text=teach_text,
+            markdown_v2_raw=True,
         )
         return
     elif cmd == "/course_chat":
