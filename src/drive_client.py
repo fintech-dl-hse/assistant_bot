@@ -103,9 +103,7 @@ def copy_feedback_form(
                 fileId=template_id,
                 body={
                     "name": new_title,
-                    "parents": [folder_id],
                 },
-                supportsAllDrives=True,
             )
             .execute()
         )
