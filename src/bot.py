@@ -24,6 +24,8 @@ from drive_client import (
 )
 from github_client import (
     add_collaborator as github_add_collaborator,
+    get_latest_lecture_url as github_get_latest_lecture_url,
+    get_latest_seminar_notebook_path as github_get_latest_seminar_notebook_path,
     is_collaborator as github_is_collaborator,
     list_repo_invitations as github_list_repo_invitations,
     repo_exists as github_repo_exists,
@@ -85,6 +87,7 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - hw_templates: list[str] (e.g. "fintech-dl-hse/hw-mlp-{github_nickname}")
       - drive_credentials_path: str|null (путь к JSON ключу service account для Drive)
       - drive_feedback_folder_id: str|null (ID папки Drive с шаблоном формы обратной связи)
+      - github_token: str|null (Personal Access Token для GitHub API, повышает лимит запросов)
 
     The file is intentionally read on every request.
     """
@@ -95,6 +98,7 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         "hw_templates": [],
         "drive_credentials_path": None,
         "drive_feedback_folder_id": None,
+        "github_token": None,
     }
     try:
         path = Path(config_path)
@@ -148,6 +152,11 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             drive_feedback_folder_id = None
         else:
             drive_feedback_folder_id = drive_feedback_folder_id.strip()
+        github_token = data.get("github_token")
+        if not isinstance(github_token, str) or not github_token.strip():
+            github_token = None
+        else:
+            github_token = github_token.strip()
         return {
             "admin_users": admin_users,
             "course_chat_id": course_chat_id,
@@ -155,6 +164,7 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             "hw_templates": hw_templates,
             "drive_credentials_path": drive_credentials_path,
             "drive_feedback_folder_id": drive_feedback_folder_id,
+            "github_token": github_token,
         }
     except Exception:
         logging.getLogger(__name__).warning(
@@ -181,6 +191,7 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "hw_templates": settings.get("hw_templates") or [],
         "drive_credentials_path": settings.get("drive_credentials_path"),
         "drive_feedback_folder_id": settings.get("drive_feedback_folder_id"),
+        "github_token": settings.get("github_token"),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
@@ -826,117 +837,6 @@ SEMINARS_PATH = "seminars"
 LECTURES_PATH = "lectures"
 # Папка с шаблоном формы обратной связи (если в конфиге не задан drive_feedback_folder_id)
 DEFAULT_DRIVE_FEEDBACK_FOLDER_ID = "1MdblY1XMYxX4OFBW0Z2eUYIOPIOVGdiw"
-
-
-def _get_latest_seminar_notebook_path() -> str | None:
-    """
-    Запрашивает через GitHub API список ноутбуков в seminars и возвращает путь
-    к последнему по имени (например seminars/04_cnn/04_seminar_cnn.ipynb).
-
-    Returns:
-        Путь вида "seminars/XX_topic/XX_seminar_....ipynb" или None при ошибке.
-    """
-    log = logging.getLogger(__name__)
-    base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{SEMINARS_PATH}"
-    try:
-        r = requests.get(base_url, timeout=10)
-        if r.status_code != 200:
-            log.warning(
-                "teach/seminars: GitHub API %s вернул %s, body=%s",
-                base_url,
-                r.status_code,
-                (r.text[:500] if r.text else ""),
-            )
-            return None
-        items = r.json()
-        if not isinstance(items, list):
-            log.warning("teach/seminars: ответ API не список, type=%s", type(items).__name__)
-            return None
-        notebook_paths: list[str] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") != "dir":
-                continue
-            name = (item.get("name") or "").strip()
-            if not name or name.startswith(".") or name.startswith("_"):
-                continue
-            sub_url = f"{base_url}/{name}"
-            sub = requests.get(sub_url, timeout=10)
-            if sub.status_code != 200:
-                log.debug("teach/seminars: подпапка %s вернула %s", name, sub.status_code)
-                continue
-            sub_items = sub.json()
-            if not isinstance(sub_items, list):
-                continue
-            for f in sub_items:
-                if not isinstance(f, dict):
-                    continue
-                if f.get("type") != "file":
-                    continue
-                fn = (f.get("name") or "").strip()
-                if fn.endswith(".ipynb"):
-                    notebook_paths.append(f"{SEMINARS_PATH}/{name}/{fn}")
-        if not notebook_paths:
-            log.warning("teach/seminars: в репозитории не найдено ни одного .ipynb в %s", SEMINARS_PATH)
-            return None
-        notebook_paths.sort()
-        return notebook_paths[-1]
-    except Exception:
-        log.warning(
-            "teach/seminars: ошибка при запросе списка ноутбуков с GitHub",
-            exc_info=True,
-        )
-        return None
-
-
-def _get_latest_lecture_url() -> str | None:
-    """
-    Запрашивает через GitHub API содержимое lectures и возвращает ссылку
-    на последний файл лекции по имени (например .pdf).
-
-    Returns:
-        URL вида https://github.com/.../blob/main/lectures/26.02.09.DL04.pdf или None.
-    """
-    log = logging.getLogger(__name__)
-    base_url = f"https://api.github.com/repos/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/contents/{LECTURES_PATH}"
-    try:
-        r = requests.get(base_url, timeout=10)
-        if r.status_code != 200:
-            log.warning(
-                "teach/lectures: GitHub API %s вернул %s, body=%s",
-                base_url,
-                r.status_code,
-                (r.text[:500] if r.text else ""),
-            )
-            return None
-        items = r.json()
-        if not isinstance(items, list):
-            log.warning("teach/lectures: ответ API не список, type=%s", type(items).__name__)
-            return None
-        files: list[str] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") != "file":
-                continue
-            name = (item.get("name") or "").strip()
-            if not name or name == "README.md":
-                continue
-            if name.endswith(".pdf"):
-                files.append(name)
-        if not files:
-            log.warning("teach/lectures: в папке %s не найдено .pdf файлов", LECTURES_PATH)
-            return None
-        files.sort()
-        path = f"{LECTURES_PATH}/{files[-1]}"
-        return f"https://github.com/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/blob/{COURSE_REPO_BRANCH}/{path}"
-    except Exception:
-        log.warning(
-            "teach/lectures: ошибка при запросе списка лекций с GitHub",
-            exc_info=True,
-        )
-        return None
 
 
 def _seminar_week_from_notebook_path(notebook_path: str) -> int | None:
@@ -1953,14 +1853,27 @@ def _handle_message(
                 text="Недостаточно прав: команда доступна только администраторам.",
             )
             return
-        path = _get_latest_seminar_notebook_path()
+        github_token = settings.get("github_token") or None
+        path = github_get_latest_seminar_notebook_path(
+            owner=COURSE_REPO_OWNER,
+            repo=COURSE_REPO_NAME,
+            branch=COURSE_REPO_BRANCH,
+            seminars_path=SEMINARS_PATH,
+            token_override=github_token,
+        )
         colab_url: str | None = None
         if path:
             colab_url = (
                 f"https://colab.research.google.com/github/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/"
                 f"blob/{COURSE_REPO_BRANCH}/{path}"
             )
-        lecture_url = _get_latest_lecture_url()
+        lecture_url = github_get_latest_lecture_url(
+            owner=COURSE_REPO_OWNER,
+            repo=COURSE_REPO_NAME,
+            branch=COURSE_REPO_BRANCH,
+            lectures_path=LECTURES_PATH,
+            token_override=github_token,
+        )
         folder_id = (
             (settings.get("drive_feedback_folder_id") or "").strip()
             or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID

@@ -24,12 +24,12 @@ def _get_token() -> Optional[str]:
     return None
 
 
-def _headers() -> Dict[str, str]:
+def _headers(token_override: Optional[str] = None) -> Dict[str, str]:
     h: Dict[str, str] = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": API_VERSION,
     }
-    token = _get_token()
+    token = (token_override or "").strip() or _get_token()
     if token:
         h["Authorization"] = f"Bearer {token}"
     return h
@@ -115,6 +115,94 @@ def repo_exists(owner: str, repo: str) -> bool:
             exc_info=True,
         )
         return False
+
+
+def get_repo_contents(owner: str, repo: str, path: str, token_override: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
+    """
+    GET /repos/{owner}/{repo}/contents/{path}. Returns list of items (files/dirs) or None on error.
+    """
+    owner = (owner or "").strip()
+    repo = (repo or "").strip()
+    path = (path or "").strip().strip("/")
+    if not owner or not repo:
+        return None
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    try:
+        resp = requests.get(url, headers=_headers(token_override), timeout=10)
+        if resp.status_code != 200:
+            _log.warning("GitHub API %s -> %s, body=%s", url, resp.status_code, (resp.text[:500] if resp.text else ""))
+            return None
+        data = resp.json()
+        return data if isinstance(data, list) else None
+    except Exception:
+        _log.warning("Failed to get repo contents %s/%s/%s", owner, repo, path, exc_info=True)
+        return None
+
+
+def get_latest_seminar_notebook_path(
+    owner: str,
+    repo: str,
+    branch: str,
+    seminars_path: str,
+    token_override: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Список ноутбуков в seminars и путь к последнему по имени (например seminars/04_cnn/04_seminar_cnn.ipynb).
+    """
+    items = get_repo_contents(owner, repo, seminars_path, token_override)
+    if not isinstance(items, list):
+        return None
+    notebook_paths: List[str] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("type") != "dir":
+            continue
+        name = (item.get("name") or "").strip()
+        if not name or name.startswith(".") or name.startswith("_"):
+            continue
+        sub = get_repo_contents(owner, repo, f"{seminars_path}/{name}", token_override)
+        if not isinstance(sub, list):
+            _log.debug("teach/seminars: подпапка %s пуста или ошибка", name)
+            continue
+        for f in sub:
+            if not isinstance(f, dict) or f.get("type") != "file":
+                continue
+            fn = (f.get("name") or "").strip()
+            if fn.endswith(".ipynb"):
+                notebook_paths.append(f"{seminars_path}/{name}/{fn}")
+    if not notebook_paths:
+        _log.warning("teach/seminars: в %s не найдено .ipynb", seminars_path)
+        return None
+    notebook_paths.sort()
+    return notebook_paths[-1]
+
+
+def get_latest_lecture_url(
+    owner: str,
+    repo: str,
+    branch: str,
+    lectures_path: str,
+    token_override: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Список файлов в lectures, последний .pdf по имени; возвращает URL blob на GitHub.
+    """
+    items = get_repo_contents(owner, repo, lectures_path, token_override)
+    if not isinstance(items, list):
+        return None
+    files: List[str] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("type") != "file":
+            continue
+        name = (item.get("name") or "").strip()
+        if not name or name == "README.md" or not name.endswith(".pdf"):
+            continue
+        files.append(name)
+    if not files:
+        _log.warning("teach/lectures: в %s не найдено .pdf", lectures_path)
+        return None
+    files.sort()
+    path = f"{lectures_path}/{files[-1]}"
+    return f"https://github.com/{owner}/{repo}/blob/{branch}/{path}"
 
 
 def is_collaborator(owner: str, repo: str, username: str) -> bool:
