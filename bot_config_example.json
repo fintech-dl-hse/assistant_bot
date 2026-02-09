@@ -5,6 +5,7 @@
   "hw_templates": [
     "fintech-dl-hse/hw-mlp-{github_nickname}",
     "fintech-dl-hse/hw-autograd-mlp-{github_nickname}"
-  ]
+  ],
+  "drive_credentials_path": "google-cloud-service-account-fintech-dl-hse.json",
+  "drive_feedback_folder_id": null
 }
-

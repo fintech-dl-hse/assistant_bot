@@ -1,3 +1,5 @@
 openai
 requests
 schedule
+google-api-python-client
+google-auth

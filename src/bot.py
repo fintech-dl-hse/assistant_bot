@@ -17,6 +17,10 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 import schedule
 
+from drive_client import (
+    copy_feedback_form as drive_copy_feedback_form,
+    _get_credentials_path as drive_get_credentials_path,
+)
 from github_client import (
     add_collaborator as github_add_collaborator,
     is_collaborator as github_is_collaborator,
@@ -77,6 +81,8 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - course_chat_id: int|null (Telegram chat ID for the course)
       - backup_chat_id: int|null (Telegram chat ID for backups)
       - hw_templates: list[str] (e.g. "fintech-dl-hse/hw-mlp-{github_nickname}")
+      - drive_credentials_path: str|null (путь к JSON ключу service account для Drive)
+      - drive_feedback_folder_id: str|null (ID папки Drive с шаблоном формы обратной связи)
 
     The file is intentionally read on every request.
     """
@@ -85,6 +91,8 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         "course_chat_id": None,
         "backup_chat_id": None,
         "hw_templates": [],
+        "drive_credentials_path": None,
+        "drive_feedback_folder_id": None,
     }
     try:
         path = Path(config_path)
@@ -128,11 +136,23 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             if isinstance(hw_templates_raw, list)
             else []
         )
+        drive_credentials_path = data.get("drive_credentials_path")
+        if not isinstance(drive_credentials_path, str) or not drive_credentials_path.strip():
+            drive_credentials_path = None
+        else:
+            drive_credentials_path = drive_credentials_path.strip()
+        drive_feedback_folder_id = data.get("drive_feedback_folder_id")
+        if not isinstance(drive_feedback_folder_id, str) or not drive_feedback_folder_id.strip():
+            drive_feedback_folder_id = None
+        else:
+            drive_feedback_folder_id = drive_feedback_folder_id.strip()
         return {
             "admin_users": admin_users,
             "course_chat_id": course_chat_id,
             "backup_chat_id": backup_chat_id,
             "hw_templates": hw_templates,
+            "drive_credentials_path": drive_credentials_path,
+            "drive_feedback_folder_id": drive_feedback_folder_id,
         }
     except Exception:
         logging.getLogger(__name__).warning(
@@ -157,6 +177,8 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "course_chat_id": settings.get("course_chat_id", None),
         "backup_chat_id": settings.get("backup_chat_id", None),
         "hw_templates": settings.get("hw_templates") or [],
+        "drive_credentials_path": settings.get("drive_credentials_path"),
+        "drive_feedback_folder_id": settings.get("drive_feedback_folder_id"),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
@@ -800,6 +822,8 @@ COURSE_REPO_NAME = "course"
 COURSE_REPO_BRANCH = "main"
 SEMINARS_PATH = "seminars"
 LECTURES_PATH = "lectures"
+# Папка с шаблоном формы обратной связи (если в конфиге не задан drive_feedback_folder_id)
+DEFAULT_DRIVE_FEEDBACK_FOLDER_ID = "1MdblY1XMYxX4OFBW0Z2eUYIOPIOVGdiw"
 
 
 def _get_latest_seminar_notebook_path() -> str | None:
@@ -892,6 +916,26 @@ def _get_latest_lecture_url() -> str | None:
             exc_info=True,
         )
         return None
+
+
+def _seminar_week_from_notebook_path(notebook_path: str) -> int | None:
+    """
+    Извлекает номер недели из пути к ноутбуку семинара.
+
+    Например: seminars/04_cnn/04_seminar_cnn.ipynb -> 4.
+
+    Returns:
+        Номер недели (1, 2, 3, ...) или None.
+    """
+    if not notebook_path or "/" not in notebook_path:
+        return None
+    filename = notebook_path.split("/")[-1]
+    if not filename.endswith(".ipynb"):
+        return None
+    prefix = filename.split("_")[0]
+    if not prefix.isdigit():
+        return None
+    return int(prefix)
 
 
 def _is_command_for_this_bot(text: str, bot_username: str) -> bool:
@@ -1855,6 +1899,29 @@ def _handle_message(
         lecture_url = _get_latest_lecture_url()
         if lecture_url:
             lines.append(f"Лекция: {lecture_url}")
+        # Форма обратной связи: клонировать шаблон из Drive, название [DL{год}] {неделя} неделя
+        folder_id = (
+            (settings.get("drive_feedback_folder_id") or "").strip()
+            or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
+        )
+        creds_path = drive_get_credentials_path(settings)
+        if folder_id and creds_path and path:
+            week = _seminar_week_from_notebook_path(path)
+            year_short = datetime.now(timezone.utc).year % 100
+            form_title = f"[DL{year_short:02d}] {week} неделя" if week is not None else f"[DL{year_short:02d}] неделя"
+            form_result = drive_copy_feedback_form(
+                folder_id=folder_id,
+                new_title=form_title,
+                credentials_path=creds_path,
+            )
+            if form_result:
+                edit_url, view_url = form_result
+                lines.append(f"Форма (раздача): {view_url}")
+                lines.append(f"Форма (редактировать): {edit_url}")
+            else:
+                lines.append("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
+        elif (folder_id or creds_path) and not (folder_id and creds_path):
+            lines.append("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
         if not lines:
             _send_with_formatting_fallback(
                 tg=tg,
