@@ -3,12 +3,21 @@ Google Drive API client: копирование формы обратной св
 с сохранением прав доступа.
 
 Требует: service account JSON (конфиг или GOOGLE_APPLICATION_CREDENTIALS).
+
+Важно: копия создаётся в Drive сервисного аккаунта и учитывается в его квоте (~15 GB).
+При 403 storageQuotaExceeded нужно удалить старые файлы в Drive аккаунта или
+использовать Shared Drive (копии в нём не тратят квоту сервисного аккаунта).
 """
+import json
 import logging
 import os
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
+
+
+class DriveStorageQuotaExceeded(Exception):
+    """Квота хранилища Drive сервисного аккаунта исчерпана (403 storageQuotaExceeded)."""
 
 # MIME type Google Form
 GOOGLE_FORM_MIME = "application/vnd.google-apps.form"
@@ -86,7 +95,7 @@ def copy_feedback_form(
 
     template_id = files[0]["id"]
 
-    # Копировать файл в ту же папку
+    # Копировать файл в ту же папку (копия учитывается в квоте сервисного аккаунта)
     try:
         copy_result = (
             service.files()
@@ -101,6 +110,18 @@ def copy_feedback_form(
             .execute()
         )
     except HttpError as e:
+        if e.resp.status == 403 and getattr(e, "content", None):
+            try:
+                err_body = json.loads(e.content.decode("utf-8"))
+                reason = (err_body.get("error") or {}).get("errors") or []
+                if reason and (reason[0].get("reason") == "storageQuotaExceeded"):
+                    _log.warning(
+                        "Drive copy failed: storage quota exceeded. "
+                        "The service account's Drive is full. Delete old files or use a Shared Drive."
+                    )
+                    raise DriveStorageQuotaExceeded from e
+            except (ValueError, KeyError, IndexError):
+                pass
         _log.warning("Drive copy failed: %s", e)
         return None
 

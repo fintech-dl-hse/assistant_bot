@@ -18,6 +18,7 @@ from openai.types.chat import ChatCompletionMessageParam
 import schedule
 
 from drive_client import (
+    DriveStorageQuotaExceeded,
     copy_feedback_form as drive_copy_feedback_form,
     _get_credentials_path as drive_get_credentials_path,
 )
@@ -1947,15 +1948,22 @@ def _handle_message(
         )
         creds_path = drive_get_credentials_path(settings)
         form_result: tuple[str, str] | None = None
+        _form_quota_msg = False
         if folder_id and creds_path and path:
             week = _seminar_week_from_notebook_path(path)
             year_short = datetime.now(timezone.utc).year % 100
             form_title = f"[DL{year_short:02d}] {week} неделя" if week is not None else f"[DL{year_short:02d}] неделя"
-            form_result = drive_copy_feedback_form(
-                folder_id=folder_id,
-                new_title=form_title,
-                credentials_path=creds_path,
-            )
+            try:
+                form_result = drive_copy_feedback_form(
+                    folder_id=folder_id,
+                    new_title=form_title,
+                    credentials_path=creds_path,
+                )
+            except DriveStorageQuotaExceeded:
+                form_result = None
+                _form_quota_msg = True
+            else:
+                _form_quota_msg = False
 
         # Собираем сообщение в MarkdownV2 с эмодзи и кликабельными ссылками
         md_lines: list[str] = []
@@ -1974,6 +1982,14 @@ def _handle_message(
             )
             md_lines.append(
                 "✏️ " + _escape_markdown_v2_plain("Форма (редактировать): ") + _md2_link("редактировать", edit_url)
+            )
+        elif _form_quota_msg:
+            md_lines.append(
+                "⚠️ "
+                + _escape_markdown_v2_plain(
+                    "Форма: квота хранилища Drive сервисного аккаунта исчерпана. "
+                    "Удалите старые копии форм в Drive или перенесите папку в Shared Drive."
+                )
             )
         elif folder_id and creds_path and path:
             md_lines.append(
