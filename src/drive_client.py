@@ -95,6 +95,10 @@ def copy_feedback_form(
 
     template_id = files[0]["id"]
 
+    print("template_id", template_id)
+    print("folder_id", folder_id)
+    print("new_title", new_title)
+
     # Копировать файл в ту же папку (копия учитывается в квоте сервисного аккаунта)
     try:
         copy_result = (

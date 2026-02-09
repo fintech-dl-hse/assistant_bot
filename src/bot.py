@@ -87,7 +87,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - hw_templates: list[str] (e.g. "fintech-dl-hse/hw-mlp-{github_nickname}")
       - drive_credentials_path: str|null (путь к JSON ключу service account для Drive)
       - drive_feedback_folder_id: str|null (ID папки Drive с шаблоном формы обратной связи)
-      - github_token: str|null (Personal Access Token для GitHub API, повышает лимит запросов)
 
     The file is intentionally read on every request.
     """
@@ -98,7 +97,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         "hw_templates": [],
         "drive_credentials_path": None,
         "drive_feedback_folder_id": None,
-        "github_token": None,
     }
     try:
         path = Path(config_path)
@@ -152,11 +150,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             drive_feedback_folder_id = None
         else:
             drive_feedback_folder_id = drive_feedback_folder_id.strip()
-        github_token = data.get("github_token")
-        if not isinstance(github_token, str) or not github_token.strip():
-            github_token = None
-        else:
-            github_token = github_token.strip()
         return {
             "admin_users": admin_users,
             "course_chat_id": course_chat_id,
@@ -164,7 +157,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             "hw_templates": hw_templates,
             "drive_credentials_path": drive_credentials_path,
             "drive_feedback_folder_id": drive_feedback_folder_id,
-            "github_token": github_token,
         }
     except Exception:
         logging.getLogger(__name__).warning(
@@ -191,7 +183,6 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "hw_templates": settings.get("hw_templates") or [],
         "drive_credentials_path": settings.get("drive_credentials_path"),
         "drive_feedback_folder_id": settings.get("drive_feedback_folder_id"),
-        "github_token": settings.get("github_token"),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
@@ -1853,13 +1844,11 @@ def _handle_message(
                 text="Недостаточно прав: команда доступна только администраторам.",
             )
             return
-        github_token = settings.get("github_token") or None
         path = github_get_latest_seminar_notebook_path(
             owner=COURSE_REPO_OWNER,
             repo=COURSE_REPO_NAME,
             branch=COURSE_REPO_BRANCH,
             seminars_path=SEMINARS_PATH,
-            token_override=github_token,
         )
         colab_url: str | None = None
         if path:
@@ -1872,7 +1861,6 @@ def _handle_message(
             repo=COURSE_REPO_NAME,
             branch=COURSE_REPO_BRANCH,
             lectures_path=LECTURES_PATH,
-            token_override=github_token,
         )
         folder_id = (
             (settings.get("drive_feedback_folder_id") or "").strip()
