@@ -6,7 +6,8 @@ Uses personal access token from environment:
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import base64
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -137,6 +138,82 @@ def get_repo_contents(owner: str, repo: str, path: str, token_override: Optional
     except Exception:
         _log.warning("Failed to get repo contents %s/%s/%s", owner, repo, path, exc_info=True)
         return None
+
+
+def get_file(owner: str, repo: str, path: str, token_override: Optional[str] = None) -> Optional[Tuple[str, str]]:
+    """
+    GET /repos/{owner}/{repo}/contents/{path} for a single file.
+    Returns (decoded_content, sha) or None on error.
+    """
+    owner = (owner or "").strip()
+    repo = (repo or "").strip()
+    path = (path or "").strip().strip("/")
+    if not owner or not repo or not path:
+        return None
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    try:
+        resp = requests.get(url, headers=_headers(token_override), timeout=10)
+        if resp.status_code != 200:
+            _log.warning("GitHub API %s -> %s, body=%s", url, resp.status_code, (resp.text[:500] if resp.text else ""))
+            return None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        content_b64 = data.get("content")
+        sha = (data.get("sha") or "").strip()
+        if not sha or not content_b64:
+            return None
+        content_b64_clean = "".join(c for c in content_b64 if c not in "\n\r ")
+        try:
+            decoded = base64.b64decode(content_b64_clean).decode("utf-8")
+        except Exception:
+            _log.warning("Failed to decode file content %s/%s/%s", owner, repo, path, exc_info=True)
+            return None
+        return (decoded, sha)
+    except Exception:
+        _log.warning("Failed to get file %s/%s/%s", owner, repo, path, exc_info=True)
+        return None
+
+
+def update_file(
+    owner: str,
+    repo: str,
+    path: str,
+    content: str,
+    sha: str,
+    message: str,
+    token_override: Optional[str] = None,
+) -> bool:
+    """
+    PUT /repos/{owner}/{repo}/contents/{path} to update a file.
+    Returns True on 200.
+    """
+    owner = (owner or "").strip()
+    repo = (repo or "").strip()
+    path = (path or "").strip().strip("/")
+    if not owner or not repo or not path or not sha or not message:
+        return False
+    try:
+        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    except Exception:
+        _log.warning("Failed to encode content for %s/%s/%s", owner, repo, path, exc_info=True)
+        return False
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    try:
+        resp = requests.put(
+            url,
+            headers=_headers(token_override),
+            json={"message": message, "content": content_b64, "sha": sha},
+            timeout=15,
+        )
+        _log.debug("GitHub API PUT %s -> %s", url, resp.status_code)
+        if resp.status_code != 200:
+            _log.warning("GitHub API PUT %s -> %s, body=%s", url, resp.status_code, (resp.text[:500] if resp.text else ""))
+            return False
+        return True
+    except Exception:
+        _log.warning("Failed to update file %s/%s/%s", owner, repo, path, exc_info=True)
+        return False
 
 
 def get_latest_seminar_notebook_path(

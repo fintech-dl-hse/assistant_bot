@@ -24,11 +24,13 @@ from drive_client import (
 )
 from github_client import (
     add_collaborator as github_add_collaborator,
+    get_file as github_get_file,
     get_latest_lecture_url as github_get_latest_lecture_url,
     get_latest_seminar_notebook_path as github_get_latest_seminar_notebook_path,
     is_collaborator as github_is_collaborator,
     list_repo_invitations as github_list_repo_invitations,
     repo_exists as github_repo_exists,
+    update_file as github_update_file,
     user_exists as github_user_exists,
 )
 from telegram_client import TelegramClient
@@ -1724,6 +1726,7 @@ def _handle_message(
         "/github",
         "/invit",
         "/hw_templates",
+        "/hw_invite",
         "/teach",
     }:
         return
@@ -1759,6 +1762,7 @@ def _handle_message(
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
             lines.append("- /hw_templates list | add <template> <invite_link> [bonus] | remove <N>")
+            lines.append("- /hw_invite <hw-slug> <github_classrooms_invite_link>")
             lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         _send_with_formatting_fallback(
             tg=tg,
@@ -3090,7 +3094,7 @@ def _handle_message(
             markdown_v2_raw=True,
         )
         return
-    elif cmd == "/hw_templates":
+    elif cmd == "/hw_invite":
         if not is_admin:
             _send_with_formatting_fallback(
                 tg=tg,
@@ -3100,126 +3104,92 @@ def _handle_message(
             )
             return
 
-        sub = (args or "").strip().lower()
-        parts = sub.split(maxsplit=1)
-        subcmd = parts[0] if parts else ""
-        subargs = parts[1] if len(parts) > 1 else ""
-
-        templates: list[str | Dict[str, Any]] = list(settings.get("hw_templates") or [])
-
-        if subcmd == "list":
-            if not templates:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Шаблоны ДЗ пусты. Добавьте: /hw_templates add owner/repo-{github_nickname} <invite_link>",
-                )
-            else:
-                line_parts = []
-                for i, entry in enumerate(templates, start=1):
-                    t_str, inv, is_bonus = _parse_hw_template_entry(entry)
-                    bonus_prefix = "🎁 " if is_bonus else ""
-                    if inv:
-                        line_parts.append(f"{i}. {bonus_prefix}{t_str}\n   Инвайт: {inv}")
-                    else:
-                        line_parts.append(f"{i}. {bonus_prefix}{t_str}")
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Шаблоны репозиториев ДЗ:\n\n" + "\n".join(line_parts),
-                )
-            return
-
-        if subcmd == "add":
-            add_parts = subargs.strip().split(maxsplit=2)
-            template = (add_parts[0] or "").strip()
-            invite_link = (add_parts[1] or "").strip() if len(add_parts) > 1 else ""
-            bonus_arg = (add_parts[2] or "").strip().lower() if len(add_parts) > 2 else ""
-            bonus = bonus_arg in ("1", "true", "yes", "bonus")
-            if not template or "{github_nickname}" not in template:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Usage: /hw_templates add <owner/repo-{github_nickname}> <invite_link> [bonus]",
-                )
-                return
-            if not invite_link:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Для нового шаблона укажите ссылку на инвайт: /hw_templates add <template> <invite_link> [bonus]",
-                )
-                return
-            existing_templates = [_parse_hw_template_entry(e)[0] for e in templates]
-            if template in existing_templates:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Такой шаблон уже есть.",
-                )
-                return
-            templates.append({"template": template, "invite_link": invite_link, "bonus": bonus})
-            settings["hw_templates"] = templates
-            try:
-                _save_settings(config_path, settings)
-            except Exception as e:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text=f"Не удалось сохранить конфиг: {type(e).__name__}: {e}",
-                )
-                return
+        parts = (args or "").strip().split(maxsplit=1)
+        if len(parts) < 2:
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
-                text=f"Добавлен шаблон: {template}",
+                text="Usage: /hw_invite <hw-slug> <github_classrooms_invite_link>",
             )
             return
 
-        if subcmd == "remove":
-            idx_str = subargs.strip()
-            if not idx_str or not idx_str.isdigit():
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text="Usage: /hw_templates remove <N> (номер из list)",
-                )
-                return
-            idx = int(idx_str)
-            if idx < 1 or idx > len(templates):
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text=f"Номер должен быть от 1 до {len(templates)}.",
-                )
-                return
-            removed_entry = templates.pop(idx - 1)
-            removed_str, _, _ = _parse_hw_template_entry(removed_entry)
-            settings["hw_templates"] = templates
-            try:
-                _save_settings(config_path, settings)
-            except Exception as e:
-                _send_with_formatting_fallback(
-                    tg=tg,
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    text=f"Не удалось сохранить конфиг: {type(e).__name__}: {e}",
-                )
-                return
+        hw_slug = (parts[0] or "").strip()
+        invite_link = (parts[1] or "").strip()
+        if not hw_slug or not invite_link:
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
-                text=f"Удалён шаблон: {removed_str}",
+                text="Usage: /hw_invite <hw-slug> <github_classrooms_invite_link>",
+            )
+            return
+
+        hw_meta_path = "terraform/functions/grades/hw-meta.json"
+        result = github_get_file(owner="fintech-dl-hse", repo="checkhw", path=hw_meta_path)
+        if not result:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Не удалось прочитать hw-meta.json из репозитория fintech-dl-hse/checkhw.",
+            )
+            return
+
+        content, sha = result
+        try:
+            meta = json.loads(content)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Ошибка разбора JSON: {type(e).__name__}: {e}",
+            )
+            return
+
+        if not isinstance(meta, list):
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="hw-meta.json должен быть массивом объектов.",
+            )
+            return
+
+        found = False
+        for entry in meta:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("id") or "").strip() == hw_slug:
+                entry["classroom_invite_link"] = invite_link
+                found = True
+                break
+
+        if not found:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Домашнее задание с id '{hw_slug}' не найдено в hw-meta.json.",
+            )
+            return
+
+        new_content = json.dumps(meta, ensure_ascii=False, indent=2) + "\n"
+        commit_ok = github_update_file(
+            owner="fintech-dl-hse",
+            repo="checkhw",
+            path=hw_meta_path,
+            content=new_content,
+            sha=sha,
+            message=f"hw_invite: set classroom_invite_link for {hw_slug}",
+        )
+        if not commit_ok:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Не удалось записать изменения в репозиторий fintech-dl-hse/checkhw.",
             )
             return
 
@@ -3227,7 +3197,7 @@ def _handle_message(
             tg=tg,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
-            text="Usage: /hw_templates list | add <template> <invite_link> [bonus] | remove <N>",
+            text=f"Готово. Для {hw_slug} записан classroom_invite_link в hw-meta.json.",
         )
         return
     elif cmd == "/qa":
