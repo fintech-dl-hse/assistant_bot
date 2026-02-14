@@ -1738,6 +1738,7 @@ def _handle_message(
         "/me",
         "/github",
         "/invit",
+        "/hw_pin",
         "/hw_invite",
         "/teach",
     }:
@@ -1773,6 +1774,7 @@ def _handle_message(
             lines.append("- /tokens_stat")
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
+            lines.append("- /hw_pin — список ДЗ со ссылками на приглашения в Classroom")
             lines.append("- /hw_invite <hw-slug> <github_classrooms_invite_link>")
             lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         _send_with_formatting_fallback(
@@ -3153,6 +3155,116 @@ def _handle_message(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             text=header + body,
+            markdown_v2_raw=True,
+        )
+        return
+    elif cmd == "/hw_pin":
+        if not is_admin:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Недостаточно прав: команда доступна только администраторам.",
+            )
+            return
+
+        hw_meta_path = "terraform/functions/grades/hw-meta.json"
+        result = github_get_file(owner="fintech-dl-hse", repo="checkhw", path=hw_meta_path)
+        if not result:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="Не удалось загрузить список ДЗ (hw-meta.json из fintech-dl-hse/checkhw).",
+            )
+            return
+
+        content, _ = result
+        try:
+            meta = json.loads(content)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Ошибка разбора hw-meta.json: {type(e).__name__}: {e}",
+            )
+            return
+
+        if not isinstance(meta, list):
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="hw-meta.json должен быть массивом.",
+            )
+            return
+
+        rows_pin: list[Dict[str, Any]] = []
+        for entry in meta:
+            if not isinstance(entry, dict):
+                continue
+            hw_id = str(entry.get("id") or "").strip()
+            if not hw_id:
+                continue
+            stored_invite_link = (entry.get("classroom_invite_link") or "").strip() or None
+            if not stored_invite_link:
+                continue
+
+            deadline_iso = str(entry.get("deadline") or "").strip()
+            max_points = int(entry.get("max_points") or 0)
+            is_bonus = bool(entry.get("bonus", False))
+            rows_pin.append({
+                "hw_id": hw_id,
+                "deadline": deadline_iso,
+                "max_points": max_points,
+                "bonus": is_bonus,
+                "short_name": _hw_id_to_short_name(hw_id),
+                "link_url": stored_invite_link,
+            })
+
+        rows_pin.sort(key=lambda r: (r["bonus"], r["deadline"]))
+
+        groups_pin: list[tuple[bool, str, list[Dict[str, Any]]]] = []
+        i = 0
+        while i < len(rows_pin):
+            r0 = rows_pin[i]
+            bonus = r0["bonus"]
+            deadline = r0["deadline"]
+            group_rows = [r0]
+            j = i + 1
+            while j < len(rows_pin) and rows_pin[j]["bonus"] == bonus and rows_pin[j]["deadline"] == deadline:
+                group_rows.append(rows_pin[j])
+                j += 1
+            groups_pin.append((bonus, deadline, group_rows))
+            i = j
+
+        md_parts_pin: list[str] = []
+        for bonus, _deadline, group_rows in groups_pin:
+            if bonus:
+                md_parts_pin.append(_escape_markdown_v2_plain("🎁 Бонусные домашки"))
+            else:
+                section_title = " + ".join(r["short_name"] for r in group_rows)
+                md_parts_pin.append(_escape_markdown_v2_plain("🟢 " + section_title))
+
+            for r in group_rows:
+                points_str = _points_russian(r["max_points"])
+                deadline_str = _format_deadline_ru(r["deadline"])
+                line_rest = _escape_markdown_v2_plain(f" [{points_str}] Дедлайн {deadline_str}")
+                bold_link = "*" + _md2_link(r["hw_id"], r["link_url"]) + "*"
+                if bonus:
+                    md_parts_pin.append(_escape_markdown_v2_plain("🟢 ") + bold_link + line_rest)
+                else:
+                    md_parts_pin.append(bold_link + line_rest)
+
+            md_parts_pin.append("")
+
+        body_pin = "\n".join(md_parts_pin).rstrip()
+        _send_with_formatting_fallback(
+            tg=tg,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=body_pin,
             markdown_v2_raw=True,
         )
         return
