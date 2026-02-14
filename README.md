@@ -18,7 +18,6 @@
 * /quiz_list - Список квизов. Каждый квиз отправляется отдельным сообщением
 * /quiz_delete <quiz_id> - Удалить квиз
 * /quiz_admin_stat - Админ-статистика по квизам (кол-во студентов, mean/std попыток по квизам)
-* /hw_templates list | add \<template\> | remove \<N\> - Управление шаблонами репозиториев ДЗ (например fintech-dl-hse/hw-mlp-{github_nickname})
 
 ## Конфиг
 
@@ -33,10 +32,6 @@
 {
   "admin_users": [123456789, "my_username"],
   "course_chat_id": -1001234567890,
-  "hw_templates": [
-    "fintech-dl-hse/hw-mlp-{github_nickname}",
-    "fintech-dl-hse/hw-autograd-mlp-{github_nickname}"
-  ]
 }
 ```
 

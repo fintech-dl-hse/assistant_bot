@@ -86,7 +86,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - admin_users: list[int|str] (Telegram user IDs and/or usernames)
       - course_chat_id: int|null (Telegram chat ID for the course)
       - backup_chat_id: int|null (Telegram chat ID for backups)
-      - hw_templates: list of str or dict; each dict: {"template": "...", "invite_link": "https://...", "bonus": false}
       - drive_credentials_path: str|null (путь к JSON ключу service account для Drive)
       - drive_feedback_folder_id: str|null (ID папки Drive с шаблоном формы обратной связи)
 
@@ -96,7 +95,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         "admin_users": [],
         "course_chat_id": None,
         "backup_chat_id": None,
-        "hw_templates": [],
         "drive_credentials_path": None,
         "drive_feedback_folder_id": None,
     }
@@ -136,18 +134,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
                 backup_chat_id = None
         else:
             backup_chat_id = None
-        hw_templates_raw = data.get("hw_templates", [])
-        if not isinstance(hw_templates_raw, list):
-            hw_templates = []
-        else:
-            hw_templates = []
-            for t in hw_templates_raw:
-                if isinstance(t, str) and t.strip():
-                    hw_templates.append(t.strip())
-                elif isinstance(t, dict) and (t.get("template") or "").strip():
-                    inv = (t.get("invite_link") or "").strip() or None
-                    bonus = bool(t.get("bonus", False))
-                    hw_templates.append({"template": str(t.get("template", "")).strip(), "invite_link": inv, "bonus": bonus})
         drive_credentials_path = data.get("drive_credentials_path")
         if not isinstance(drive_credentials_path, str) or not drive_credentials_path.strip():
             drive_credentials_path = None
@@ -162,7 +148,6 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             "admin_users": admin_users,
             "course_chat_id": course_chat_id,
             "backup_chat_id": backup_chat_id,
-            "hw_templates": hw_templates,
             "drive_credentials_path": drive_credentials_path,
             "drive_feedback_folder_id": drive_feedback_folder_id,
         }
@@ -188,36 +173,12 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "admin_users": settings.get("admin_users") or [],
         "course_chat_id": settings.get("course_chat_id", None),
         "backup_chat_id": settings.get("backup_chat_id", None),
-        "hw_templates": settings.get("hw_templates") or [],
         "drive_credentials_path": settings.get("drive_credentials_path"),
         "drive_feedback_folder_id": settings.get("drive_feedback_folder_id"),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
     tmp_path.replace(path)
-
-
-def _parse_hw_template_entry(entry: str | Dict[str, Any]) -> Tuple[str, str | None, bool]:
-    """
-    Return (template_str, invite_link, bonus) for an hw_templates entry.
-    Entry can be legacy string or dict with "template", optional "invite_link", optional "bonus".
-    """
-    if isinstance(entry, str):
-        parts = entry.split(" ")
-        if len(parts) == 2:
-            return parts[0], parts[1], False
-        elif len(parts) == 3:
-            assert parts[2].lower() == 'bonus', "Bonus modifier unknown! Must be equal to bonus"
-            return parts[0], parts[1], True
-        else:
-            raise ValueError("Invalid arguments.")
-
-    if isinstance(entry, dict):
-        t = (entry.get("template") or "").strip()
-        inv = (entry.get("invite_link") or "").strip() or None
-        bonus = bool(entry.get("bonus", False))
-        return (t, inv, bonus)
-    return ("", None, False)
 
 
 def _quiz_sort_key(q: Dict[str, Any]) -> tuple[int, int | str]:
@@ -1725,7 +1686,6 @@ def _handle_message(
         "/me",
         "/github",
         "/invit",
-        "/hw_templates",
         "/hw_invite",
         "/teach",
     }:
@@ -1761,7 +1721,6 @@ def _handle_message(
             lines.append("- /tokens_stat")
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
-            lines.append("- /hw_templates list | add <template> <invite_link> [bonus] | remove <N>")
             lines.append("- /hw_invite <hw-slug> <github_classrooms_invite_link>")
             lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         _send_with_formatting_fallback(
@@ -3051,6 +3010,8 @@ def _handle_message(
             is_bonus = bool(entry.get("bonus", False))
             bonus_part = "🎁 " if is_bonus else ""
             stored_invite_link = (entry.get("classroom_invite_link") or "").strip() or None
+            if not stored_invite_link:
+                continue
 
             if not owner or not repo:
                 md_lines.append(
