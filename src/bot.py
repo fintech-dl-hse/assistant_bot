@@ -3131,10 +3131,10 @@ def _handle_message(
         md_parts: list[str] = []
         for bonus, _deadline, group_rows in groups:
             if bonus:
-                md_parts.append(_escape_markdown_v2_plain("🎁 Бонусные домашки"))
+                md_parts.append("*" + _escape_markdown_v2_plain("🎁 Бонусные домашки") + "*")
             else:
                 section_title = " + ".join(r["short_name"] for r in group_rows)
-                md_parts.append(_escape_markdown_v2_plain("🟢 " + section_title))
+                md_parts.append("*" + _escape_markdown_v2_plain("🟢 " + section_title) + "*")
 
             for r in group_rows:
                 points_str = _points_russian(r["max_points"])
@@ -3242,10 +3242,10 @@ def _handle_message(
         md_parts_pin: list[str] = []
         for bonus, _deadline, group_rows in groups_pin:
             if bonus:
-                md_parts_pin.append(_escape_markdown_v2_plain("🎁 Бонусные домашки"))
+                md_parts_pin.append("*" + _escape_markdown_v2_plain("🎁 Бонусные домашки") + "*")
             else:
                 section_title = " + ".join(r["short_name"] for r in group_rows)
-                md_parts_pin.append(_escape_markdown_v2_plain("🟢 " + section_title))
+                md_parts_pin.append("*" + _escape_markdown_v2_plain("🟢 " + section_title) + "*")
 
             for r in group_rows:
                 points_str = _points_russian(r["max_points"])
