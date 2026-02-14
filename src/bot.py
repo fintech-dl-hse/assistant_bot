@@ -84,7 +84,7 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
       - admin_users: list[int|str] (Telegram user IDs and/or usernames)
       - course_chat_id: int|null (Telegram chat ID for the course)
       - backup_chat_id: int|null (Telegram chat ID for backups)
-      - hw_templates: list[str] (e.g. "fintech-dl-hse/hw-mlp-{github_nickname}")
+      - hw_templates: list of str or dict; each dict: {"template": "owner/repo-{github_nickname}", "invite_link": "https://..."}
       - drive_credentials_path: str|null (путь к JSON ключу service account для Drive)
       - drive_feedback_folder_id: str|null (ID папки Drive с шаблоном формы обратной связи)
 
@@ -135,11 +135,16 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         else:
             backup_chat_id = None
         hw_templates_raw = data.get("hw_templates", [])
-        hw_templates = (
-            [str(t).strip() for t in hw_templates_raw if isinstance(t, str) and t.strip()]
-            if isinstance(hw_templates_raw, list)
-            else []
-        )
+        if not isinstance(hw_templates_raw, list):
+            hw_templates = []
+        else:
+            hw_templates = []
+            for t in hw_templates_raw:
+                if isinstance(t, str) and t.strip():
+                    hw_templates.append(t.strip())
+                elif isinstance(t, dict) and (t.get("template") or "").strip():
+                    inv = (t.get("invite_link") or "").strip() or None
+                    hw_templates.append({"template": str(t.get("template", "")).strip(), "invite_link": inv})
         drive_credentials_path = data.get("drive_credentials_path")
         if not isinstance(drive_credentials_path, str) or not drive_credentials_path.strip():
             drive_credentials_path = None
@@ -187,6 +192,20 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")
     tmp_path.replace(path)
+
+
+def _parse_hw_template_entry(entry: str | Dict[str, Any]) -> Tuple[str, str | None]:
+    """
+    Return (template_str, invite_link) for an hw_templates entry.
+    Entry can be legacy string or dict with "template" and optional "invite_link".
+    """
+    if isinstance(entry, str):
+        return (entry.strip(), None)
+    if isinstance(entry, dict):
+        t = (entry.get("template") or "").strip()
+        inv = (entry.get("invite_link") or "").strip() or None
+        return (t, inv)
+    return ("", None)
 
 
 def _quiz_sort_key(q: Dict[str, Any]) -> tuple[int, int | str]:
@@ -1718,7 +1737,7 @@ def _handle_message(
             lines.append("- /tokens_stat")
             lines.append("- /set_backup_chat_id <chat_id>")
             lines.append("- /backup")
-            lines.append("- /hw_templates list | add <template> | remove <N>")
+            lines.append("- /hw_templates list | add <template> <invite_link> | remove <N>")
             lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         _send_with_formatting_fallback(
             tg=tg,
@@ -2954,7 +2973,7 @@ def _handle_message(
             )
             return
 
-        templates: list[str] = list(settings.get("hw_templates") or [])
+        templates: list[str | Dict[str, Any]] = list(settings.get("hw_templates") or [])
         if not templates:
             _send_with_formatting_fallback(
                 tg=tg,
@@ -2965,8 +2984,11 @@ def _handle_message(
             return
 
         results: list[str] = []
-        for template in templates:
-            full_name = template.replace("{github_nickname}", github_nick)
+        for entry in templates:
+            template_str, stored_invite_link = _parse_hw_template_entry(entry)
+            if not template_str:
+                continue
+            full_name = template_str.replace("{github_nickname}", github_nick)
             if "/" not in full_name:
                 full_name = "fintech-dl-hse/" + full_name
 
@@ -2979,7 +3001,10 @@ def _handle_message(
             repo_url = f"https://github.com/{owner}/{repo}"
             exists = github_repo_exists(owner=owner, repo=repo)
             if not exists:
-                results.append(f"❌ {repo_url} — вы не приняли задание")
+                if stored_invite_link:
+                    results.append(f"📨 {repo_url}\nПриглашение: {stored_invite_link}")
+                else:
+                    results.append(f"❌ {repo_url} — вы не приняли задание")
                 continue
             if github_is_collaborator(owner=owner, repo=repo, username=github_nick):
                 results.append(f"✅ {repo_url}")
@@ -2995,7 +3020,7 @@ def _handle_message(
                 None,
             )
             if invite_for_user:
-                inv_link = invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
+                inv_link = stored_invite_link or invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
                 results.append(f"📨 {repo_url}\nПриглашение: {inv_link}")
                 continue
             if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
@@ -3029,7 +3054,7 @@ def _handle_message(
         subcmd = parts[0] if parts else ""
         subargs = parts[1] if len(parts) > 1 else ""
 
-        templates: list[str] = list(settings.get("hw_templates") or [])
+        templates: list[str | Dict[str, Any]] = list(settings.get("hw_templates") or [])
 
         if subcmd == "list":
             if not templates:
@@ -3037,29 +3062,46 @@ def _handle_message(
                     tg=tg,
                     chat_id=chat_id,
                     message_thread_id=message_thread_id,
-                    text="Шаблоны ДЗ пусты. Добавьте: /hw_templates add owner/repo-{github_nickname}",
+                    text="Шаблоны ДЗ пусты. Добавьте: /hw_templates add owner/repo-{github_nickname} <invite_link>",
                 )
             else:
-                lines = [f"{i}. {t}" for i, t in enumerate(templates, start=1)]
+                line_parts = []
+                for i, entry in enumerate(templates, start=1):
+                    t_str, inv = _parse_hw_template_entry(entry)
+                    if inv:
+                        line_parts.append(f"{i}. {t_str}\n   Инвайт: {inv}")
+                    else:
+                        line_parts.append(f"{i}. {t_str}")
                 _send_with_formatting_fallback(
                     tg=tg,
                     chat_id=chat_id,
                     message_thread_id=message_thread_id,
-                    text="Шаблоны репозиториев ДЗ:\n\n" + "\n".join(lines),
+                    text="Шаблоны репозиториев ДЗ:\n\n" + "\n".join(line_parts),
                 )
             return
 
         if subcmd == "add":
-            template = subargs.strip()
+            add_parts = subargs.strip().split(maxsplit=1)
+            template = (add_parts[0] or "").strip()
+            invite_link = (add_parts[1] or "").strip() if len(add_parts) > 1 else ""
             if not template or "{github_nickname}" not in template:
                 _send_with_formatting_fallback(
                     tg=tg,
                     chat_id=chat_id,
                     message_thread_id=message_thread_id,
-                    text="Usage: /hw_templates add <owner/repo-{github_nickname}>",
+                    text="Usage: /hw_templates add <owner/repo-{github_nickname}> <invite_link>",
                 )
                 return
-            if template in templates:
+            if not invite_link:
+                _send_with_formatting_fallback(
+                    tg=tg,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    text="Для нового шаблона укажите ссылку на инвайт: /hw_templates add <template> <invite_link>",
+                )
+                return
+            existing_templates = [_parse_hw_template_entry(e)[0] for e in templates]
+            if template in existing_templates:
                 _send_with_formatting_fallback(
                     tg=tg,
                     chat_id=chat_id,
@@ -3067,7 +3109,7 @@ def _handle_message(
                     text="Такой шаблон уже есть.",
                 )
                 return
-            templates.append(template)
+            templates.append({"template": template, "invite_link": invite_link})
             settings["hw_templates"] = templates
             try:
                 _save_settings(config_path, settings)
@@ -3106,7 +3148,8 @@ def _handle_message(
                     text=f"Номер должен быть от 1 до {len(templates)}.",
                 )
                 return
-            removed = templates.pop(idx - 1)
+            removed_entry = templates.pop(idx - 1)
+            removed_str, _ = _parse_hw_template_entry(removed_entry)
             settings["hw_templates"] = templates
             try:
                 _save_settings(config_path, settings)
@@ -3122,7 +3165,7 @@ def _handle_message(
                 tg=tg,
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
-                text=f"Удалён шаблон: {removed}",
+                text=f"Удалён шаблон: {removed_str}",
             )
             return
 
@@ -3130,7 +3173,7 @@ def _handle_message(
             tg=tg,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
-            text="Usage: /hw_templates list | add <template> | remove <N>",
+            text="Usage: /hw_templates list | add <template> <invite_link> | remove <N>",
         )
         return
     elif cmd == "/qa":
