@@ -1074,6 +1074,58 @@ def _hw_display_name(template_str: str) -> str:
     return base or template_str or ""
 
 
+def _hw_id_to_short_name(hw_id: str) -> str:
+    """Короткое отображаемое имя для секции /invit (hw-mlp -> MLP, hw-weight-init -> Weight Init)."""
+    _MAP = {
+        "hw-mlp": "MLP",
+        "hw-activations": "Activations",
+        "hw-weight-init": "Weight Init",
+        "hw-optimization": "Optimization",
+        "hw-dropout": "Dropout",
+        "hw-batchnorm": "BatchNorm",
+        "hw-pytorch-basics": "Basics",
+        "hw-autograd-mlp": "hw-autograd-mlp",
+        "hw-muon": "hw-muon",
+    }
+    if hw_id in _MAP:
+        return _MAP[hw_id]
+    return hw_id.replace("hw-", "").replace("-", " ").title() or hw_id
+
+
+def _points_russian(max_points: int) -> str:
+    """Склонение баллов: 1 балл, 2 балла, 5 баллов. n = max_points // 100."""
+    n = max(0, int(max_points) // 100)
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} балл"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} балла"
+    return f"{n} баллов"
+
+
+def _format_deadline_ru(deadline_iso: str) -> str:
+    """Формат дедлайна для /invit: '2026-01-28T23:59:59' -> '28 января 23:59'."""
+    months_ru = (
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    )
+    s = (deadline_iso or "").strip()
+    if not s or "T" not in s:
+        return s
+    try:
+        date_part, time_part = s.split("T", 1)[:2]
+        y, m, d = date_part.split("-")[:3]
+        day = int(d)
+        month_idx = int(m)
+        if 1 <= month_idx <= 12:
+            month = months_ru[month_idx - 1]
+        else:
+            month = m
+        time_short = time_part[:5] if len(time_part) >= 5 else time_part  # HH:MM
+        return f"{day} {month} {time_short}"
+    except (ValueError, IndexError):
+        return s
+
+
 def _escape_markdown_v2(text: str) -> str:
     """
     Escapes text for Telegram MarkdownV2.
@@ -2989,12 +3041,15 @@ def _handle_message(
             )
             return
 
-        md_lines: list[str] = []
-        for idx, entry in enumerate(meta, start=1):
+        rows: list[Dict[str, Any]] = []
+        for entry in meta:
             if not isinstance(entry, dict):
                 continue
             hw_id = str(entry.get("id") or "").strip()
             if not hw_id:
+                continue
+            stored_invite_link = (entry.get("classroom_invite_link") or "").strip() or None
+            if not stored_invite_link:
                 continue
 
             repo_template = (entry.get("repo_name_template") or "").strip() or (hw_id + "-{github_nickname}")
@@ -3005,75 +3060,94 @@ def _handle_message(
             owner, repo = full_name.split("/", 1)
             owner = owner.strip()
             repo = repo.strip()
-            name = hw_id
-            num_part = _escape_markdown_v2_plain(f"{idx}.")
-            is_bonus = bool(entry.get("bonus", False))
-            bonus_part = "🎁 " if is_bonus else ""
-            stored_invite_link = (entry.get("classroom_invite_link") or "").strip() or None
-            if not stored_invite_link:
-                continue
-
             if not owner or not repo:
-                md_lines.append(
-                    num_part + " " + bonus_part
-                    + "*" + _escape_markdown_v2_plain(name or full_name) + "*"
-                    + _escape_markdown_v2_plain(" — неверный шаблон репозитория")
-                )
                 continue
 
             repo_url = f"https://github.com/{owner}/{repo}"
             exists = github_repo_exists(owner=owner, repo=repo)
             is_collab = github_is_collaborator(owner=owner, repo=repo, username=github_nick)
 
+            link_url = repo_url
             if exists and is_collab:
-                md_lines.append(
-                    num_part + " " + bonus_part + _md2_link(name, repo_url)
-                )
-                continue
-
-            inv_link: str | None = None
-            if not exists:
-                if stored_invite_link:
-                    inv_link = stored_invite_link
-            elif exists:
-                invitations = github_list_repo_invitations(owner=owner, repo=repo)
-                invite_for_user = next(
-                    (
-                        inv
-                        for inv in invitations
-                        if (inv.get("invitee") or {}).get("login", "").lower()
-                        == github_nick.lower()
-                    ),
-                    None,
-                )
-                if invite_for_user:
-                    inv_link = stored_invite_link or invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
-                else:
-                    if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
-                        inv_link = f"https://github.com/{owner}/{repo}/invitations"
-                    else:
-                        md_lines.append(
-                            num_part + " " + bonus_part
-                            + "*" + _escape_markdown_v2_plain(name) + "*"
-                            + _escape_markdown_v2_plain(" — не удалось отправить приглашение")
-                        )
-                        continue
-
-            if inv_link:
-                md_lines.append(
-                    num_part + " " + bonus_part
-                    + "*" + _escape_markdown_v2_plain(name) + "* "
-                    + _escape_markdown_v2_plain("(") + _md2_link("приглашение", inv_link) + _escape_markdown_v2_plain(")")
-                )
+                link_url = repo_url
             else:
-                md_lines.append(
-                    num_part + " " + bonus_part
-                    + "*" + _escape_markdown_v2_plain(name) + "*"
-                    + _escape_markdown_v2_plain(" — вы не приняли задание")
-                )
+                inv_link: str | None = None
+                if not exists:
+                    inv_link = stored_invite_link
+                else:
+                    invitations = github_list_repo_invitations(owner=owner, repo=repo)
+                    invite_for_user = next(
+                        (
+                            inv
+                            for inv in invitations
+                            if (inv.get("invitee") or {}).get("login", "").lower() == github_nick.lower()
+                        ),
+                        None,
+                    )
+                    if invite_for_user:
+                        inv_link = (
+                            stored_invite_link
+                            or invite_for_user.get("html_url")
+                            or f"https://github.com/{owner}/{repo}/invitations"
+                        )
+                    else:
+                        if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
+                            inv_link = f"https://github.com/{owner}/{repo}/invitations"
+                        else:
+                            continue
+                if inv_link:
+                    link_url = inv_link
 
-        header = _escape_markdown_v2_plain(f"GitHub: {github_nick}") + "\n"
-        body = "\n".join(md_lines)
+            deadline_iso = str(entry.get("deadline") or "").strip()
+            max_points = int(entry.get("max_points") or 0)
+            is_bonus = bool(entry.get("bonus", False))
+            rows.append({
+                "hw_id": hw_id,
+                "deadline": deadline_iso,
+                "max_points": max_points,
+                "bonus": is_bonus,
+                "short_name": _hw_id_to_short_name(hw_id),
+                "link_url": link_url,
+            })
+
+        rows.sort(key=lambda r: (r["bonus"], r["deadline"]))
+
+        groups: list[tuple[bool, str, list[Dict[str, Any]]]] = []
+        i = 0
+        while i < len(rows):
+            r0 = rows[i]
+            bonus = r0["bonus"]
+            deadline = r0["deadline"]
+            group_rows = [r0]
+            j = i + 1
+            while j < len(rows) and rows[j]["bonus"] == bonus and rows[j]["deadline"] == deadline:
+                group_rows.append(rows[j])
+                j += 1
+            groups.append((bonus, deadline, group_rows))
+            i = j
+
+        md_parts: list[str] = []
+        for bonus, _deadline, group_rows in groups:
+            if bonus:
+                md_parts.append(_escape_markdown_v2_plain("🎁 Бонусные домашки"))
+            else:
+                section_title = " + ".join(r["short_name"] for r in group_rows)
+                md_parts.append(_escape_markdown_v2_plain("🟢 " + section_title))
+
+            for r in group_rows:
+                points_str = _points_russian(r["max_points"])
+                deadline_str = _format_deadline_ru(r["deadline"])
+                line_rest = _escape_markdown_v2_plain(f" [{points_str}] Дедлайн {deadline_str}")
+                bold_link = "*" + _md2_link(r["hw_id"], r["link_url"]) + "*"
+                if bonus:
+                    md_parts.append(_escape_markdown_v2_plain("🟢 ") + bold_link + line_rest)
+                else:
+                    md_parts.append(bold_link + line_rest)
+
+            md_parts.append("")
+
+        header = _escape_markdown_v2_plain(f"GitHub: {github_nick}") + "\n\n"
+        body = "\n".join(md_parts).rstrip()
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
