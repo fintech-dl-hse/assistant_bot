@@ -1100,6 +1100,17 @@ def _md2_link(label: str, url: str) -> str:
     return f"[{label_escaped}]({url_escaped})"
 
 
+def _hw_display_name(template_str: str) -> str:
+    """
+    Из шаблона вида owner/repo-{github_nickname} возвращает название домашки без ника:
+    например, "fintech-dl-hse/hw-mlp-{github_nickname}" -> "hw-mlp".
+    """
+    base = (template_str or "").replace("{github_nickname}", "").rstrip("-")
+    if "/" in base:
+        base = base.split("/", 1)[1]
+    return base or template_str or ""
+
+
 def _escape_markdown_v2(text: str) -> str:
     """
     Escapes text for Telegram MarkdownV2.
@@ -2993,12 +3004,12 @@ def _handle_message(
             )
             return
 
-        results: list[str] = []
-        for entry in templates:
+        display_name = _hw_display_name
+        md_lines: list[str] = []
+        for idx, entry in enumerate(templates, start=1):
             template_str, stored_invite_link, is_bonus = _parse_hw_template_entry(entry)
             if not template_str:
                 continue
-            prefix = "🎁 " if is_bonus else ""
             full_name = template_str.replace("{github_nickname}", github_nick)
             if "/" not in full_name:
                 full_name = "fintech-dl-hse/" + full_name
@@ -3006,48 +3017,77 @@ def _handle_message(
             owner, repo = full_name.split("/", 1)
             owner = owner.strip()
             repo = repo.strip()
+            name = display_name(template_str)
+            num_part = _escape_markdown_v2_plain(f"{idx}.")
+            bonus_part = "🎁 " if is_bonus else ""
+
             if not owner or not repo:
-                results.append(f"{prefix}{full_name} — неверный шаблон")
-                continue
-            repo_url = f"https://github.com/{owner}/{repo}"
-            exists = github_repo_exists(owner=owner, repo=repo)
-            if not exists:
-                if stored_invite_link:
-                    results.append(f"{prefix}📨 {repo_url}\nПриглашение: {stored_invite_link}")
-                else:
-                    results.append(f"{prefix}❌ {repo_url} — вы не приняли задание")
-                continue
-            if github_is_collaborator(owner=owner, repo=repo, username=github_nick):
-                results.append(f"{prefix}✅ {repo_url}")
-                continue
-            invitations = github_list_repo_invitations(owner=owner, repo=repo)
-            invite_for_user = next(
-                (
-                    inv
-                    for inv in invitations
-                    if (inv.get("invitee") or {}).get("login", "").lower()
-                    == github_nick.lower()
-                ),
-                None,
-            )
-            if invite_for_user:
-                inv_link = stored_invite_link or invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
-                results.append(f"{prefix}📨 {repo_url}\nПриглашение: {inv_link}")
-                continue
-            if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
-                inv_url = f"https://github.com/{owner}/{repo}/invitations"
-                results.append(
-                    f"{prefix}📨 {repo_url}\nПриглашение отправлено. Примите: {inv_url}"
+                md_lines.append(
+                    num_part + " " + bonus_part
+                    + "*" + _escape_markdown_v2_plain(name or full_name) + "*"
+                    + _escape_markdown_v2_plain(" — неверный шаблон")
                 )
-            else:
-                results.append(f"{prefix}❌ {repo_url} — не удалось отправить приглашение")
                 continue
 
+            repo_url = f"https://github.com/{owner}/{repo}"
+            exists = github_repo_exists(owner=owner, repo=repo)
+            is_collab = github_is_collaborator(owner=owner, repo=repo, username=github_nick)
+
+            if exists and is_collab:
+                md_lines.append(
+                    num_part + " " + bonus_part + _md2_link(name, repo_url)
+                )
+                continue
+
+            inv_link: str | None = None
+            if not exists:
+                if stored_invite_link:
+                    inv_link = stored_invite_link
+            elif exists:
+                invitations = github_list_repo_invitations(owner=owner, repo=repo)
+                invite_for_user = next(
+                    (
+                        inv
+                        for inv in invitations
+                        if (inv.get("invitee") or {}).get("login", "").lower()
+                        == github_nick.lower()
+                    ),
+                    None,
+                )
+                if invite_for_user:
+                    inv_link = stored_invite_link or invite_for_user.get("html_url") or f"https://github.com/{owner}/{repo}/invitations"
+                else:
+                    if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
+                        inv_link = f"https://github.com/{owner}/{repo}/invitations"
+                    else:
+                        md_lines.append(
+                            num_part + " " + bonus_part
+                            + "*" + _escape_markdown_v2_plain(name) + "*"
+                            + _escape_markdown_v2_plain(" — не удалось отправить приглашение")
+                        )
+                        continue
+
+            if inv_link:
+                md_lines.append(
+                    num_part + " " + bonus_part
+                    + "*" + _escape_markdown_v2_plain(name) + "* "
+                    + _escape_markdown_v2_plain("(") + _md2_link("приглашение", inv_link) + _escape_markdown_v2_plain(")")
+                )
+            else:
+                md_lines.append(
+                    num_part + " " + bonus_part
+                    + "*" + _escape_markdown_v2_plain(name) + "*"
+                    + _escape_markdown_v2_plain(" — вы не приняли задание")
+                )
+
+        header = _escape_markdown_v2_plain(f"GitHub: {github_nick}") + "\n"
+        body = "\n".join(md_lines)
         _send_with_formatting_fallback(
             tg=tg,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
-            text=f"GitHub: {github_nick}\n\n" + "\n".join(results),
+            text=header + body,
+            markdown_v2_raw=True,
         )
         return
     elif cmd == "/hw_templates":
