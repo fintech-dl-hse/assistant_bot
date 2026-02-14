@@ -2998,38 +2998,65 @@ def _handle_message(
             )
             return
 
-        templates: list[str | Dict[str, Any]] = list(settings.get("hw_templates") or [])
-        if not templates:
+        hw_meta_path = "terraform/functions/grades/hw-meta.json"
+        result = github_get_file(owner="fintech-dl-hse", repo="checkhw", path=hw_meta_path)
+        if not result:
             _send_with_formatting_fallback(
                 tg=tg,
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
-                text="Шаблоны репозиториев ДЗ не настроены. Обратитесь к администратору.",
+                text="Не удалось загрузить список ДЗ (hw-meta.json из fintech-dl-hse/checkhw).",
             )
             return
 
-        display_name = _hw_display_name
+        content, _ = result
+        try:
+            meta = json.loads(content)
+        except Exception as e:
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text=f"Ошибка разбора hw-meta.json: {type(e).__name__}: {e}",
+            )
+            return
+
+        if not isinstance(meta, list):
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                text="hw-meta.json должен быть массивом.",
+            )
+            return
+
         md_lines: list[str] = []
-        for idx, entry in enumerate(templates, start=1):
-            template_str, stored_invite_link, is_bonus = _parse_hw_template_entry(entry)
-            if not template_str:
+        for idx, entry in enumerate(meta, start=1):
+            if not isinstance(entry, dict):
                 continue
-            full_name = template_str.replace("{github_nickname}", github_nick)
+            hw_id = str(entry.get("id") or "").strip()
+            if not hw_id:
+                continue
+
+            repo_template = (entry.get("repo_name_template") or "").strip() or (hw_id + "-{github_nickname}")
+            full_name = repo_template.replace("{github_nickname}", github_nick)
             if "/" not in full_name:
                 full_name = "fintech-dl-hse/" + full_name
 
             owner, repo = full_name.split("/", 1)
             owner = owner.strip()
             repo = repo.strip()
-            name = display_name(template_str)
+            name = hw_id
             num_part = _escape_markdown_v2_plain(f"{idx}.")
+            is_bonus = bool(entry.get("bonus", False))
             bonus_part = "🎁 " if is_bonus else ""
+            stored_invite_link = (entry.get("classroom_invite_link") or "").strip() or None
 
             if not owner or not repo:
                 md_lines.append(
                     num_part + " " + bonus_part
                     + "*" + _escape_markdown_v2_plain(name or full_name) + "*"
-                    + _escape_markdown_v2_plain(" — неверный шаблон")
+                    + _escape_markdown_v2_plain(" — неверный шаблон репозитория")
                 )
                 continue
 
