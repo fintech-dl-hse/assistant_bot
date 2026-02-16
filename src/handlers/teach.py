@@ -64,12 +64,12 @@ def handle_teach(ctx: BotContext) -> None:
             f"https://colab.research.google.com/github/{COURSE_REPO_OWNER}/{COURSE_REPO_NAME}/"
             f"blob/{COURSE_REPO_BRANCH}/{path}"
         )
-    lecture_url = github_get_latest_lecture_url(
-        owner=COURSE_REPO_OWNER,
-        repo=COURSE_REPO_NAME,
-        branch=COURSE_REPO_BRANCH,
-        lectures_path=LECTURES_PATH,
-    )
+    # lecture_url = github_get_latest_lecture_url(
+    #     owner=COURSE_REPO_OWNER,
+    #     repo=COURSE_REPO_NAME,
+    #     branch=COURSE_REPO_BRANCH,
+    #     lectures_path=LECTURES_PATH,
+    # )
     folder_id = (
         (ctx.settings.get("drive_feedback_folder_id") or "").strip()
         or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
@@ -77,7 +77,7 @@ def handle_teach(ctx: BotContext) -> None:
     creds_path = drive_get_credentials_path(ctx.settings)
     form_result: tuple[str, str] | None = None
     _form_quota_msg = False
-    if folder_id and creds_path and path:
+    if False and folder_id and creds_path and path:
         week = _seminar_week_from_notebook_path(path)
         year_short = datetime.now(timezone.utc).year % 100
         form_title = f"[DL{year_short:02d}] {week} неделя" if week is not None else f"[DL{year_short:02d}] неделя"
