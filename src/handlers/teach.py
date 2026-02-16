@@ -101,38 +101,38 @@ def handle_teach(ctx: BotContext) -> None:
 
     # Собираем сообщение в MarkdownV2 с эмодзи и кликабельными ссылками
     md_lines: list[str] = []
-    if lecture_url:
-        md_lines.append(
-            "📖 " + _escape_markdown_v2_plain("Лекция: ") + _md2_link("открыть PDF", lecture_url)
-        )
+    # if lecture_url:
+    #     md_lines.append(
+    #         "📖 " + _escape_markdown_v2_plain("Лекция: ") + _md2_link("открыть PDF", lecture_url)
+    #     )
     if colab_url:
         md_lines.append(
             "📓 " + _escape_markdown_v2_plain("Семинар (Colab): ") + _md2_link("открыть в Colab", colab_url)
         )
-    if form_result:
-        edit_url, view_url = form_result
-        md_lines.append(
-            "📋 " + _escape_markdown_v2_plain("Форма (раздача): ") + _md2_link("заполнить", view_url)
-        )
-        md_lines.append(
-            "✏️ " + _escape_markdown_v2_plain("Форма (редактировать): ") + _md2_link("редактировать", edit_url)
-        )
-    elif _form_quota_msg:
-        md_lines.append(
-            "⚠️ "
-            + _escape_markdown_v2_plain(
-                "Форма: квота хранилища Drive сервисного аккаунта исчерпана. "
-                "Удалите старые копии форм в Drive или перенесите папку в Shared Drive."
-            )
-        )
-    elif folder_id and creds_path and path:
-        md_lines.append(
-            "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
-        )
-    elif (folder_id or creds_path) and not (folder_id and creds_path):
-        md_lines.append(
-            "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
-        )
+    # if form_result:
+    #     edit_url, view_url = form_result
+    #     md_lines.append(
+    #         "📋 " + _escape_markdown_v2_plain("Форма (раздача): ") + _md2_link("заполнить", view_url)
+    #     )
+    #     md_lines.append(
+    #         "✏️ " + _escape_markdown_v2_plain("Форма (редактировать): ") + _md2_link("редактировать", edit_url)
+    #     )
+    # elif _form_quota_msg:
+    #     md_lines.append(
+    #         "⚠️ "
+    #         + _escape_markdown_v2_plain(
+    #             "Форма: квота хранилища Drive сервисного аккаунта исчерпана. "
+    #             "Удалите старые копии форм в Drive или перенесите папку в Shared Drive."
+    #         )
+    #     )
+    # elif folder_id and creds_path and path:
+    #     md_lines.append(
+    #         "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
+    #     )
+    # elif (folder_id or creds_path) and not (folder_id and creds_path):
+    #     md_lines.append(
+    #         "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
+    #     )
 
     if not md_lines:
         _teach_log = logging.getLogger(__name__)
@@ -153,6 +153,9 @@ def handle_teach(ctx: BotContext) -> None:
             text="Не удалось получить данные из репозитория курса.",
         )
         return
+
+    md_lines.append("⏰ Начнем в 19:50")
+
     teach_text = "\n".join(md_lines)
     _send_with_formatting_fallback(
         tg=ctx.tg,
