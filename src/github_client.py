@@ -319,14 +319,14 @@ def is_collaborator(owner: str, repo: str, username: str) -> bool:
 
 def list_repo_invitations(owner: str, repo: str) -> List[Dict[str, Any]]:
     """
-    List repository invitations (pending collaborator invites).
+    List repository invitations (pending and expired collaborator invites).
 
     Args:
         owner: Repository owner.
         repo: Repository name.
 
     Returns:
-        List of invitation objects (each has invitee.login, html_url, etc.).
+        List of invitation objects (each has invitee.login, html_url, expired, etc.).
     """
     owner = (owner or "").strip()
     repo = (repo or "").strip()
@@ -341,7 +341,17 @@ def list_repo_invitations(owner: str, repo: str) -> List[Dict[str, Any]]:
         if resp.status_code != 200:
             return []
         data = resp.json()
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        for inv in data:
+            login = (inv.get("invitee") or {}).get("login", "?")
+            expired = inv.get("expired", False)
+            inv_id = inv.get("id", "?")
+            _log.debug(
+                "  invitation id=%s invitee=%s expired=%s html_url=%s",
+                inv_id, login, expired, inv.get("html_url", "?"),
+            )
+        return data
     except Exception:
         _log.warning(
             "Failed to list invitations for %s/%s",
@@ -350,6 +360,40 @@ def list_repo_invitations(owner: str, repo: str) -> List[Dict[str, Any]]:
             exc_info=True,
         )
         return []
+
+
+def delete_repo_invitation(owner: str, repo: str, invitation_id: int) -> bool:
+    """
+    Delete a repository invitation.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        invitation_id: Numeric invitation ID from the invitations list.
+
+    Returns:
+        True if deleted (204), False otherwise.
+    """
+    owner = (owner or "").strip()
+    repo = (repo or "").strip()
+    if not owner or not repo or not invitation_id:
+        return False
+
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/invitations/{invitation_id}"
+    _log.debug("Deleting invitation %s for %s/%s", invitation_id, owner, repo)
+    try:
+        resp = requests.delete(url, headers=_headers(), timeout=10)
+        _log.debug("GitHub API DELETE %s -> %s", url, resp.status_code)
+        return resp.status_code == 204
+    except Exception:
+        _log.warning(
+            "Failed to delete invitation %s for %s/%s",
+            invitation_id,
+            owner,
+            repo,
+            exc_info=True,
+        )
+        return False
 
 
 def add_collaborator(

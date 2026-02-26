@@ -1,5 +1,8 @@
 import json
+import logging
 from typing import Any, Dict
+
+_log = logging.getLogger(__name__)
 
 from context import BotContext
 from data.users import _load_users
@@ -14,6 +17,7 @@ from text_format import (
 
 from github_client import (
     add_collaborator as github_add_collaborator,
+    delete_repo_invitation as github_delete_repo_invitation,
     get_file as github_get_file,
     invite_collaborator as github_invite_collaborator,
     is_collaborator as github_is_collaborator,
@@ -115,14 +119,28 @@ def handle_invit(ctx: BotContext) -> None:
                     ),
                     None,
                 )
-                if invite_for_user:
+                if invite_for_user and not invite_for_user.get("expired"):
+                    _log.debug(
+                        "handle_invit: pending invitation found for %s on %s/%s: %s",
+                        github_nick, owner, repo, invite_for_user.get("html_url"),
+                    )
                     inv_link = (
-                        stored_invite_link
-                        or invite_for_user.get("html_url")
+                        invite_for_user.get("html_url")
                         or f"https://github.com/{owner}/{repo}/invitations"
                     )
                 else:
+                    if invite_for_user and invite_for_user.get("expired"):
+                        inv_id = invite_for_user.get("id")
+                        _log.debug(
+                            "handle_invit: expired invitation id=%s for %s on %s/%s, deleting",
+                            inv_id, github_nick, owner, repo,
+                        )
+                        github_delete_repo_invitation(owner=owner, repo=repo, invitation_id=inv_id)
                     fresh_url = github_invite_collaborator(owner=owner, repo=repo, username=github_nick)
+                    _log.debug(
+                        "handle_invit: recreated invitation for %s on %s/%s -> %s",
+                        github_nick, owner, repo, fresh_url,
+                    )
                     if fresh_url is None:
                         continue
                     inv_link = fresh_url or f"https://github.com/{owner}/{repo}/invitations"
