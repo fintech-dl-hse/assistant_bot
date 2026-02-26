@@ -1,3 +1,4 @@
+import difflib
 import logging
 from typing import Callable
 
@@ -42,6 +43,7 @@ COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
     "/hw_invite": handle_hw_invite,
     "/teach": handle_teach,
     "/quiz": handle_quiz,
+    "/qiuz": handle_quiz,
     "/skip": handle_skip,
     "/quiz_stat": handle_quiz_stat,
     "/quiz_ask": handle_quiz_ask,
@@ -72,6 +74,12 @@ def dispatch(ctx: BotContext) -> None:
     # 3. Lookup in COMMAND_HANDLERS dict
     handler = COMMAND_HANDLERS.get(ctx.cmd)
     if handler is None:
+        if ctx.cmd and ctx.chat_type == "private":
+            matches = difflib.get_close_matches(ctx.cmd, COMMAND_HANDLERS.keys(), n=1, cutoff=0.5)
+            if matches:
+                ctx.tg.send_message(chat_id=ctx.chat_id, text=f"Команда {ctx.cmd} не найдена. Возможно, вы имели в виду {matches[0]}?")
+            else:
+                ctx.tg.send_message(chat_id=ctx.chat_id, text=f"Команда {ctx.cmd} не найдена. Используйте /help для просмотра доступных команд.")
         return
 
     try:
