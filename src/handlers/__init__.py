@@ -31,6 +31,7 @@ from handlers.teach import handle_teach
 from handlers.user import handle_github, handle_me
 
 COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
+    "/start": handle_help,
     "/help": handle_help,
     "/get_chat_id": handle_get_chat_id,
     "/qa": handle_qa,
