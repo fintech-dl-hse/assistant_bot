@@ -77,9 +77,9 @@ def dispatch(ctx: BotContext) -> None:
         if ctx.cmd and ctx.chat_type == "private":
             matches = difflib.get_close_matches(ctx.cmd, COMMAND_HANDLERS.keys(), n=1, cutoff=0.5)
             if matches:
-                ctx.tg.send_message(chat_id=ctx.chat_id, text=f"Команда {ctx.cmd} не найдена. Возможно, вы имели в виду {matches[0]}?")
+                ctx.tg.send_message(chat_id=ctx.chat_id, message=f"Команда {ctx.cmd} не найдена. Возможно, вы имели в виду {matches[0]}?")
             else:
-                ctx.tg.send_message(chat_id=ctx.chat_id, text=f"Команда {ctx.cmd} не найдена. Используйте /help для просмотра доступных команд.")
+                ctx.tg.send_message(chat_id=ctx.chat_id, message=f"Команда {ctx.cmd} не найдена. Используйте /help для просмотра доступных команд.")
         return
 
     try:
