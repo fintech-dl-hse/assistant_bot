@@ -396,3 +396,64 @@ def add_collaborator(
             exc_info=True,
         )
         return False
+
+
+def invite_collaborator(
+    owner: str,
+    repo: str,
+    username: str,
+    permission: str = "push",
+) -> Optional[str]:
+    """
+    Invite a user as repository collaborator and return the invitation URL.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        username: GitHub username to invite.
+        permission: push, pull, admin, maintain, triage.
+
+    Returns:
+        html_url of the new invitation if sent (201),
+        "" if the user is already a collaborator (204),
+        None on failure.
+    """
+    owner = (owner or "").strip()
+    repo = (repo or "").strip()
+    username = (username or "").strip().lstrip("@")
+    if not owner or not repo or not username:
+        return None
+
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/collaborators/{username}"
+    _log.debug("Inviting collaborator %s to %s/%s", username, owner, repo)
+    try:
+        resp = requests.put(
+            url,
+            headers=_headers(),
+            json={"permission": permission},
+            timeout=10,
+        )
+        _log.debug("GitHub API PUT %s -> %s", url, resp.status_code)
+        if resp.status_code == 201:
+            data = resp.json()
+            html_url = (data.get("html_url") or "").strip()
+            return html_url or f"https://github.com/{owner}/{repo}/invitations"
+        if resp.status_code == 204:
+            return ""
+        _log.warning(
+            "Failed to invite collaborator %s to %s/%s: status %s",
+            username,
+            owner,
+            repo,
+            resp.status_code,
+        )
+        return None
+    except Exception:
+        _log.warning(
+            "Failed to invite collaborator %s to %s/%s",
+            username,
+            owner,
+            repo,
+            exc_info=True,
+        )
+        return None

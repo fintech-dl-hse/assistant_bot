@@ -15,6 +15,7 @@ from text_format import (
 from github_client import (
     add_collaborator as github_add_collaborator,
     get_file as github_get_file,
+    invite_collaborator as github_invite_collaborator,
     is_collaborator as github_is_collaborator,
     list_repo_invitations as github_list_repo_invitations,
     repo_exists as github_repo_exists,
@@ -121,10 +122,10 @@ def handle_invit(ctx: BotContext) -> None:
                         or f"https://github.com/{owner}/{repo}/invitations"
                     )
                 else:
-                    if github_add_collaborator(owner=owner, repo=repo, username=github_nick):
-                        inv_link = f"https://github.com/{owner}/{repo}/invitations"
-                    else:
+                    fresh_url = github_invite_collaborator(owner=owner, repo=repo, username=github_nick)
+                    if fresh_url is None:
                         continue
+                    inv_link = fresh_url or f"https://github.com/{owner}/{repo}/invitations"
             if inv_link:
                 link_url = inv_link
 
