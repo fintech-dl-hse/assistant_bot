@@ -124,10 +124,7 @@ def handle_invit(ctx: BotContext) -> None:
                         "handle_invit: pending invitation found for %s on %s/%s: %s",
                         github_nick, owner, repo, invite_for_user.get("html_url"),
                     )
-                    inv_link = (
-                        invite_for_user.get("html_url")
-                        or f"https://github.com/{owner}/{repo}/invitations"
-                    )
+                    inv_link = repo_url
                 else:
                     if invite_for_user and invite_for_user.get("expired"):
                         inv_id = invite_for_user.get("id")
