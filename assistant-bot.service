@@ -1,0 +1,21 @@
+[Unit]
+Description=Assistant Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dtarasov/workspace/assistant_bot
+ExecStart=/home/dtarasov/workspace/assistant_bot/venv/bin/python src/bot.py
+Restart=always
+RestartSec=10
+
+EnvironmentFile=/home/dtarasov/workspace/assistant_bot/.env
+Environment=HOME=/home/dtarasov
+Environment=PATH=/home/dtarasov/workspace/assistant_bot/venv/bin:/usr/local/bin:/usr/bin:/bin
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=assistant-bot
+
+[Install]
+WantedBy=default.target
