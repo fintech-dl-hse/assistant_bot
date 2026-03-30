@@ -89,7 +89,8 @@ def _format_deadline_ru(deadline_iso: str) -> str:
 
 def _escape_markdown_v2(text: str) -> str:
     """
-    Escapes text for Telegram MarkdownV2.
+    Converts standard Markdown to Telegram MarkdownV2.
+    Handles bold (**text**), italic (*text*), and code blocks.
     Docs: https://core.telegram.org/bots/api#markdownv2-style
     """
     if text is None:
@@ -101,19 +102,44 @@ def _escape_markdown_v2(text: str) -> str:
         # _ * [ ] ( ) ~ ` > # + - = | { } . !
         return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", chunk)
 
+    def _escape_inside_bold(chunk: str) -> str:
+        """Escape special chars inside bold, but not the wrapping *."""
+        chunk = chunk.replace("\\", "\\\\")
+        return re.sub(r"([_\[\]()~`>#+\-=|{}.!])", r"\\\1", chunk)
+
+    def _escape_inside_italic(chunk: str) -> str:
+        """Escape special chars inside italic, but not the wrapping _."""
+        chunk = chunk.replace("\\", "\\\\")
+        return re.sub(r"([*\[\]()~`>#+\-=|{}.!])", r"\\\1", chunk)
+
     s = str(text)
 
-    # Preserve fenced and inline code blocks; escape only outside of them.
-    # - Fenced: ```...```
-    # - Inline: `...` (single-line)
-    code_re = re.compile(r"```[\s\S]*?```|`[^`\n]+`")
+    # Match: fenced code, inline code, bold (**...**), italic (*...*).
+    # Order matters: fenced code first, then inline code, then bold, then italic.
+    # Italic requires non-space after opening and before closing marker (standard MD).
+    token_re = re.compile(
+        r"```[\s\S]*?```"          # fenced code block
+        r"|`[^`\n]+`"             # inline code
+        r"|\*\*(.+?)\*\*"         # bold: **text**
+        r"|\*(\S(?:[^*\n]*\S)?)\*"  # italic: *text* (no leading/trailing space)
+    )
 
     out: list[str] = []
     last = 0
-    for m in code_re.finditer(s):
+    for m in token_re.finditer(s):
         if m.start() > last:
             out.append(_escape_plain(s[last : m.start()]))
-        out.append(m.group(0))
+
+        if m.group(1) is not None:
+            # Bold: **text** -> *escaped_text*
+            out.append("*" + _escape_inside_bold(m.group(1)) + "*")
+        elif m.group(2) is not None:
+            # Italic: *text* -> _escaped_text_
+            out.append("_" + _escape_inside_italic(m.group(2)) + "_")
+        else:
+            # Code block — keep as-is
+            out.append(m.group(0))
+
         last = m.end()
     if last < len(s):
         out.append(_escape_plain(s[last:]))
