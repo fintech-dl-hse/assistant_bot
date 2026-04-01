@@ -29,6 +29,7 @@ from handlers.quiz import (
     handle_quiz_wizard,
     handle_skip,
 )
+from handlers.exam import handle_exam_3, handle_exam_3_stat
 from handlers.teach import handle_teach
 from handlers.user import handle_github, handle_me
 
@@ -58,6 +59,8 @@ COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
     "/tokens_stat": handle_tokens_stat,
     "/set_backup_chat_id": handle_set_backup_chat_id,
     "/backup": handle_backup,
+    "/exam_3": handle_exam_3,
+    "/exam_3_stat": handle_exam_3_stat,
 }
 
 
