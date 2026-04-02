@@ -1,6 +1,7 @@
 import csv
 import io
 import logging
+import random
 from typing import Any, Dict
 
 from context import BotContext
@@ -173,4 +174,51 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
             text=f"Не удалось отправить CSV файл: {type(e).__name__}: {e}",
+        )
+        return
+
+    # Build schedule CSV: random distribution across teachers and 10-min slots
+    teachers = ["Тарасов Дмитрий", "Денис Деркач"]
+    shuffled = list(registered)
+    random.shuffle(shuffled)
+
+    students_per_slot = len(teachers)  # one student per teacher per slot
+    slots: list[str] = []
+    start_hour, start_min = 18, 10
+    for i in range(0, len(shuffled), students_per_slot):
+        slot_index = i // students_per_slot
+        total_minutes = start_hour * 60 + start_min + slot_index * 10
+        h, m = divmod(total_minutes, 60)
+        slots.extend([f"{h:02d}:{m:02d}"] * students_per_slot)
+
+    schedule_buf = io.StringIO()
+    schedule_writer = csv.writer(schedule_buf)
+    schedule_writer.writerow(["Время", "Преподаватель", "ФИО", "telegram_nick"])
+    for idx, student in enumerate(shuffled):
+        teacher = teachers[idx % len(teachers)]
+        time_slot = slots[idx]
+        schedule_writer.writerow([time_slot, teacher, student["fio"], student["telegram_nick"]])
+
+    schedule_bytes = schedule_buf.getvalue().encode("utf-8")
+    schedule_file = io.BytesIO(schedule_bytes)
+
+    try:
+        ctx.tg._request(
+            method="POST",
+            endpoint="sendDocument",
+            data={
+                "chat_id": ctx.chat_id,
+                "message_thread_id": ctx.message_thread_id,
+                "caption": f"Расписание экзамена 3 модуля ({count} чел.)",
+            },
+            files={"document": ("exam_3_schedule.csv", schedule_file, "text/csv")},
+            timeout=15,
+        )
+    except Exception as e:
+        _log.warning("Failed to send exam_3 schedule CSV: %s", e, exc_info=True)
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text=f"Не удалось отправить CSV с расписанием: {type(e).__name__}: {e}",
         )
