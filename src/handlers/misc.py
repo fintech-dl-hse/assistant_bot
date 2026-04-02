@@ -14,6 +14,7 @@ def handle_help(ctx: BotContext) -> None:
         "- /quiz",
         "- /skip",
         "- /quiz_stat",
+        "- /exam_3 — регистрация на экзамен третьего модуля",
     ]
     if ctx.is_admin:
         lines.append("- /add_admin <user_id>")
@@ -30,6 +31,7 @@ def handle_help(ctx: BotContext) -> None:
         lines.append("- /hw_pin — список ДЗ со ссылками на приглашения в Classroom")
         lines.append("- /hw_invite <hw-slug> <github_classrooms_invite_link>")
         lines.append("- /teach — последний семинар (Colab) и последняя лекция")
+        lines.append("- /exam_3_stat — статистика регистраций на экзамен 3 модуля")
     _send_with_formatting_fallback(
         tg=ctx.tg,
         chat_id=ctx.chat_id,
