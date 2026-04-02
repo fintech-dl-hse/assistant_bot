@@ -16,7 +16,6 @@ from text_format import (
 )
 
 from github_client import (
-    add_collaborator as github_add_collaborator,
     delete_repo_invitation as github_delete_repo_invitation,
     get_file as github_get_file,
     invite_collaborator as github_invite_collaborator,

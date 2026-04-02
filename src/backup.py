@@ -57,7 +57,10 @@ def _create_backup(
                 endpoint="sendDocument",
                 data={
                     "chat_id": backup_chat_id,
-                    "caption": f"Еженедельный бэкап бота от {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                    "caption": (
+                        "Еженедельный бэкап бота от "
+                        f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    ),
                 },
                 files={"document": (backup_filename, backup_file, "application/zip")},
                 timeout=30,

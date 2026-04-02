@@ -107,7 +107,7 @@ def run(github_nick: str, hw_filter: str | None, dry_run: bool) -> None:
             print(f"  no invitation found for {github_nick}")
 
         if dry_run:
-            print(f"  → (dry-run) would call invite_collaborator")
+            print("  → (dry-run) would call invite_collaborator")
             continue
 
         fresh_url = github_invite_collaborator(owner=owner, repo=repo, username=github_nick)

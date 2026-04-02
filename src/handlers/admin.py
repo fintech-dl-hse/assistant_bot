@@ -1,7 +1,5 @@
 import json
-import logging
 from pathlib import Path
-from typing import Any, Dict
 
 from context import BotContext
 from config import _save_settings

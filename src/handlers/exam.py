@@ -2,7 +2,7 @@ import csv
 import io
 import logging
 import random
-from typing import Any, Dict
+from typing import Dict
 
 from context import BotContext
 from data.quiz import _is_hidden_quiz, _get_user_quiz_state, _load_quiz_state, _load_quizzes

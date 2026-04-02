@@ -114,7 +114,8 @@ def _judge_quiz_answer(
         raise ValueError(f"Unexpected judge output: {content!r}")
     except Exception:
         logging.getLogger(__name__).warning("Judge failed; fallback to strict equality", exc_info=True)
-        return student_answer.strip() == reference_answer.strip(), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        fallback_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        return student_answer.strip() == reference_answer.strip(), fallback_usage
 
 
 def _is_quiz_question_paraphrase(
