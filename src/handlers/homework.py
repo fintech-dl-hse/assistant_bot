@@ -121,7 +121,10 @@ def handle_invit(ctx: BotContext) -> None:
                 if invite_for_user and not invite_for_user.get("expired"):
                     _log.debug(
                         "handle_invit: pending invitation found for %s on %s/%s: %s",
-                        github_nick, owner, repo, invite_for_user.get("html_url"),
+                        github_nick,
+                        owner,
+                        repo,
+                        invite_for_user.get("html_url"),
                     )
                     inv_link = repo_url + "/invitations"
                 else:
@@ -129,13 +132,19 @@ def handle_invit(ctx: BotContext) -> None:
                         inv_id = invite_for_user.get("id")
                         _log.debug(
                             "handle_invit: expired invitation id=%s for %s on %s/%s, deleting",
-                            inv_id, github_nick, owner, repo,
+                            inv_id,
+                            github_nick,
+                            owner,
+                            repo,
                         )
                         github_delete_repo_invitation(owner=owner, repo=repo, invitation_id=inv_id)
                     fresh_url = github_invite_collaborator(owner=owner, repo=repo, username=github_nick)
                     _log.debug(
                         "handle_invit: recreated invitation for %s on %s/%s -> %s",
-                        github_nick, owner, repo, fresh_url,
+                        github_nick,
+                        owner,
+                        repo,
+                        fresh_url,
                     )
                     if fresh_url is None:
                         continue
@@ -146,14 +155,16 @@ def handle_invit(ctx: BotContext) -> None:
         deadline_iso = str(entry.get("deadline") or "").strip()
         max_points = int(entry.get("max_points") or 0)
         is_bonus = bool(entry.get("bonus", False))
-        rows.append({
-            "hw_id": hw_id,
-            "deadline": deadline_iso,
-            "max_points": max_points,
-            "bonus": is_bonus,
-            "short_name": _hw_id_to_short_name(hw_id),
-            "link_url": link_url,
-        })
+        rows.append(
+            {
+                "hw_id": hw_id,
+                "deadline": deadline_iso,
+                "max_points": max_points,
+                "bonus": is_bonus,
+                "short_name": _hw_id_to_short_name(hw_id),
+                "link_url": link_url,
+            }
+        )
 
     rows.sort(key=lambda r: (r["bonus"], r["deadline"]))
 
@@ -258,14 +269,16 @@ def handle_hw_pin(ctx: BotContext) -> None:
         deadline_iso = str(entry.get("deadline") or "").strip()
         max_points = int(entry.get("max_points") or 0)
         is_bonus = bool(entry.get("bonus", False))
-        rows_pin.append({
-            "hw_id": hw_id,
-            "deadline": deadline_iso,
-            "max_points": max_points,
-            "bonus": is_bonus,
-            "short_name": _hw_id_to_short_name(hw_id),
-            "link_url": stored_invite_link,
-        })
+        rows_pin.append(
+            {
+                "hw_id": hw_id,
+                "deadline": deadline_iso,
+                "max_points": max_points,
+                "bonus": is_bonus,
+                "short_name": _hw_id_to_short_name(hw_id),
+                "link_url": stored_invite_link,
+            }
+        )
 
     rows_pin.sort(key=lambda r: (r["bonus"], r["deadline"]))
 

@@ -4,6 +4,7 @@ GitHub API client for repository existence, collaborators, and invitations.
 Uses personal access token from environment:
   - GITHUB_TOKEN or GITHUB_ACCESS_TOKEN
 """
+
 import logging
 import os
 import base64
@@ -119,7 +120,10 @@ def repo_exists(owner: str, repo: str) -> bool:
 
 
 def get_repo_contents(
-    owner: str, repo: str, path: str, token_override: Optional[str] = None,
+    owner: str,
+    repo: str,
+    path: str,
+    token_override: Optional[str] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """
     GET /repos/{owner}/{repo}/contents/{path}. Returns list of items (files/dirs) or None on error.
@@ -352,7 +356,10 @@ def list_repo_invitations(owner: str, repo: str) -> List[Dict[str, Any]]:
             inv_id = inv.get("id", "?")
             _log.debug(
                 "  invitation id=%s invitee=%s expired=%s html_url=%s",
-                inv_id, login, expired, inv.get("html_url", "?"),
+                inv_id,
+                login,
+                expired,
+                inv.get("html_url", "?"),
             )
         return data
     except Exception:

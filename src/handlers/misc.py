@@ -45,10 +45,5 @@ def handle_get_chat_id(ctx: BotContext) -> None:
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
-        text=(
-            "chat_id: "
-            f"{ctx.chat_id}\n"
-            "message_thread_id: "
-            f"{ctx.message_thread_id}\n"
-        ),
+        text=(f"chat_id: {ctx.chat_id}\nmessage_thread_id: {ctx.message_thread_id}\n"),
     )

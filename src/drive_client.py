@@ -8,6 +8,7 @@ Google Drive API client: копирование формы обратной св
 При 403 storageQuotaExceeded нужно удалить старые файлы в Drive аккаунта или
 использовать Shared Drive (копии в нём не тратят квоту сервисного аккаунта).
 """
+
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ _log = logging.getLogger(__name__)
 
 class DriveStorageQuotaExceeded(Exception):
     """Квота хранилища Drive сервисного аккаунта исчерпана (403 storageQuotaExceeded)."""
+
 
 # MIME type Google Form
 GOOGLE_FORM_MIME = "application/vnd.google-apps.form"

@@ -68,10 +68,7 @@ def handle_teach(ctx: BotContext) -> None:
     #     branch=COURSE_REPO_BRANCH,
     #     lectures_path=LECTURES_PATH,
     # )
-    folder_id = (
-        (ctx.settings.get("drive_feedback_folder_id") or "").strip()
-        or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
-    )
+    folder_id = (ctx.settings.get("drive_feedback_folder_id") or "").strip() or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
     creds_path = drive_get_credentials_path(ctx.settings)
     form_result: tuple[str, str] | None = None
     _form_quota_msg = False

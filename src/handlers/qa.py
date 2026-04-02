@@ -52,10 +52,7 @@ def handle_qa(ctx: BotContext) -> None:
                 tg=ctx.tg,
                 chat_id=ctx.chat_id,
                 message_thread_id=ctx.message_thread_id,
-                text=(
-                    "Попытка хорошая, но так просто ответ на вопрос квиза ты не получишь. "
-                    "Пройди квиз честно."
-                ),
+                text=("Попытка хорошая, но так просто ответ на вопрос квиза ты не получишь. Пройди квиз честно."),
             )
             return
 

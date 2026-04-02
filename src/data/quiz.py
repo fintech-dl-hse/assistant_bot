@@ -76,6 +76,7 @@ def _save_quizzes(quizzes_file: str, quizzes: list[Dict[str, Any]]) -> None:
 def _is_hidden_quiz(q: Dict[str, Any]) -> bool:
     return bool((q or {}).get("hidden"))
 
+
 def _load_quiz_state(quiz_state_file: str) -> Dict[str, Any]:
     path = Path(quiz_state_file)
     if not path.exists():

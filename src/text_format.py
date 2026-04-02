@@ -66,8 +66,18 @@ def _points_russian(max_points: int) -> str:
 def _format_deadline_ru(deadline_iso: str) -> str:
     """Формат дедлайна для /invit: '2026-01-28T23:59:59' -> '28 января 23:59'."""
     months_ru = (
-        "января", "февраля", "марта", "апреля", "мая", "июня",
-        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
     )
     s = (deadline_iso or "").strip()
     if not s or "T" not in s:
@@ -118,9 +128,9 @@ def _escape_markdown_v2(text: str) -> str:
     # Order matters: fenced code first, then inline code, then bold, then italic.
     # Italic requires non-space after opening and before closing marker (standard MD).
     token_re = re.compile(
-        r"```[\s\S]*?```"          # fenced code block
-        r"|`[^`\n]+`"             # inline code
-        r"|\*\*(.+?)\*\*"         # bold: **text**
+        r"```[\s\S]*?```"  # fenced code block
+        r"|`[^`\n]+`"  # inline code
+        r"|\*\*(.+?)\*\*"  # bold: **text**
         r"|\*(\S(?:[^*\n]*\S)?)\*"  # italic: *text* (no leading/trailing space)
     )
 
@@ -145,7 +155,6 @@ def _escape_markdown_v2(text: str) -> str:
         out.append(_escape_plain(s[last:]))
 
     return "".join(out)
-
 
 
 def _send_with_formatting_fallback(
