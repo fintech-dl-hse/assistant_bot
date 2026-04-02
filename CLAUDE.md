@@ -56,6 +56,10 @@ python src/bot.py \
 - **Config is re-read on every message** (by design)
 - **No tests, no CI, no Docker**
 
+## Adding new commands
+
+When adding a new bot command, **always** register it in the `/help` output (`src/handlers/misc.py` → `handle_help`). User-facing commands go in the main list; admin-only commands go in the `if ctx.is_admin` block.
+
 ## Key patterns
 
 - `TelegramClient` is the only class; everything else is module-level functions
