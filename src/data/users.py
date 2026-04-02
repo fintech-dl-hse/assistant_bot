@@ -49,12 +49,15 @@ def _save_users(users_file: str, data: Dict[str, Any]) -> None:
         github_changes = u.get("github_changes")
         if not isinstance(github_changes, int) or github_changes < 0:
             github_changes = 0
-        normalized_users[str(user_key)] = {
+        entry: Dict[str, Any] = {
             "fio": str(u.get("fio") or "").strip(),
             "username": str(u.get("username") or "").strip(),
             "github": str(u.get("github") or "").strip(),
             "github_changes": github_changes,
         }
+        if u.get("exam_3"):
+            entry["exam_3"] = True
+        normalized_users[str(user_key)] = entry
 
     payload = {"users": normalized_users}
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
