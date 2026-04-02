@@ -224,9 +224,7 @@ class TelegramClient:
 
         return resp
 
-    def send_message_reaction(
-        self, chat_id: int, message_id: int, reaction_emoji: str, **kwargs
-    ) -> requests.Response:
+    def send_message_reaction(self, chat_id: int, message_id: int, reaction_emoji: str, **kwargs) -> requests.Response:
         """Send a reaction to a message."""
         resp = self._request(
             method="POST",

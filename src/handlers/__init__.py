@@ -84,7 +84,12 @@ def dispatch(ctx: BotContext) -> None:
                 msg = f"Команда {ctx.cmd} не найдена. Возможно, вы имели в виду {matches[0]}?"
             else:
                 msg = f"Команда {ctx.cmd} не найдена. Используйте /help для просмотра доступных команд."
-            _send_with_formatting_fallback(tg=ctx.tg, chat_id=ctx.chat_id, message_thread_id=ctx.message_thread_id, text=msg)
+            _send_with_formatting_fallback(
+                tg=ctx.tg,
+                chat_id=ctx.chat_id,
+                message_thread_id=ctx.message_thread_id,
+                text=msg,
+            )
         return
 
     try:

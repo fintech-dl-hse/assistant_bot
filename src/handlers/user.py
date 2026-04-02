@@ -52,7 +52,11 @@ def handle_me(ctx: BotContext) -> None:
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
-        text=f"Готово. Сохранено ФИО: {fio}\nUsername: @{ctx.username}" if ctx.username else f"Готово. Сохранено ФИО: {fio}",
+        text=(
+            f"Готово. Сохранено ФИО: {fio}\nUsername: @{ctx.username}"
+            if ctx.username
+            else f"Готово. Сохранено ФИО: {fio}"
+        ),
     )
 
 

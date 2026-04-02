@@ -42,7 +42,7 @@ def _create_backup(
         ]
 
         # Create zip archive
-        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file_path, archive_name in files_to_backup:
                 if file_path.exists():
                     zipf.write(file_path, archive_name)
@@ -51,13 +51,15 @@ def _create_backup(
                     logger.warning(f"File {file_path} does not exist, skipping")
 
         # Send backup to Telegram
-        with open(backup_path, 'rb') as backup_file:
+        with open(backup_path, "rb") as backup_file:
             resp = tg._request(
                 method="POST",
                 endpoint="sendDocument",
                 data={
                     "chat_id": backup_chat_id,
-                    "caption": f"Еженедельный бэкап бота от {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                    "caption": (
+                        f"Еженедельный бэкап бота от {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    ),
                 },
                 files={"document": (backup_filename, backup_file, "application/zip")},
                 timeout=30,

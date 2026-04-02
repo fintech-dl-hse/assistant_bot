@@ -7,7 +7,6 @@ from constants import (
     COURSE_REPO_NAME,
     COURSE_REPO_OWNER,
     DEFAULT_DRIVE_FEEDBACK_FOLDER_ID,
-    LECTURES_PATH,
     SEMINARS_PATH,
 )
 from text_format import _escape_markdown_v2_plain, _md2_link, _send_with_formatting_fallback
@@ -18,7 +17,6 @@ from drive_client import (
     _get_credentials_path as drive_get_credentials_path,
 )
 from github_client import (
-    get_latest_lecture_url as github_get_latest_lecture_url,
     get_latest_seminar_notebook_path as github_get_latest_seminar_notebook_path,
 )
 
@@ -70,10 +68,7 @@ def handle_teach(ctx: BotContext) -> None:
     #     branch=COURSE_REPO_BRANCH,
     #     lectures_path=LECTURES_PATH,
     # )
-    folder_id = (
-        (ctx.settings.get("drive_feedback_folder_id") or "").strip()
-        or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
-    )
+    folder_id = (ctx.settings.get("drive_feedback_folder_id") or "").strip() or DEFAULT_DRIVE_FEEDBACK_FOLDER_ID
     creds_path = drive_get_credentials_path(ctx.settings)
     form_result: tuple[str, str] | None = None
     _form_quota_msg = False
@@ -127,11 +122,15 @@ def handle_teach(ctx: BotContext) -> None:
     #     )
     # elif folder_id and creds_path and path:
     #     md_lines.append(
-    #         "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: не удалось создать копию (проверьте Drive и права).")
+    #         "⚠️ " + _escape_markdown_v2_plain(
+    #             "Форма обратной связи: не удалось создать копию (проверьте Drive и права)."
+    #         )
     #     )
     # elif (folder_id or creds_path) and not (folder_id and creds_path):
     #     md_lines.append(
-    #         "⚠️ " + _escape_markdown_v2_plain("Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге.")
+    #         "⚠️ " + _escape_markdown_v2_plain(
+    #             "Форма обратной связи: укажите drive_credentials_path и drive_feedback_folder_id в конфиге."
+    #         )
     #     )
 
     if not md_lines:
@@ -141,7 +140,7 @@ def handle_teach(ctx: BotContext) -> None:
             "folder_id=%s, creds_path=%s",
             path,
             "ok" if colab_url else None,
-            "ok" if lecture_url else None,
+            None,  # lecture_url (disabled)
             "ok" if form_result else None,
             folder_id or None,
             "set" if creds_path else None,

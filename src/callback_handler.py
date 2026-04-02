@@ -251,6 +251,7 @@ def _handle_callback_query(
             return
 
         from pathlib import Path as _Path
+
         path = _Path(pm_log_file)
         users: set[int] = set()
         if path.exists():

@@ -6,6 +6,7 @@ Usage:
     python src/cli_invit.py --github MariaTolkacheva --hw hw-batchnorm
     python src/cli_invit.py --github MariaTolkacheva --dry-run
 """
+
 import argparse
 import json
 import logging
@@ -81,10 +82,7 @@ def run(github_nick: str, hw_filter: str | None, dry_run: bool) -> None:
 
         invitations = github_list_repo_invitations(owner=owner, repo=repo)
         invite_for_user = next(
-            (
-                inv for inv in invitations
-                if (inv.get("invitee") or {}).get("login", "").lower() == github_nick.lower()
-            ),
+            (inv for inv in invitations if (inv.get("invitee") or {}).get("login", "").lower() == github_nick.lower()),
             None,
         )
 
@@ -107,7 +105,7 @@ def run(github_nick: str, hw_filter: str | None, dry_run: bool) -> None:
             print(f"  no invitation found for {github_nick}")
 
         if dry_run:
-            print(f"  → (dry-run) would call invite_collaborator")
+            print("  → (dry-run) would call invite_collaborator")
             continue
 
         fresh_url = github_invite_collaborator(owner=owner, repo=repo, username=github_nick)

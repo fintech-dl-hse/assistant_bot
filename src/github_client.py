@@ -4,6 +4,7 @@ GitHub API client for repository existence, collaborators, and invitations.
 Uses personal access token from environment:
   - GITHUB_TOKEN or GITHUB_ACCESS_TOKEN
 """
+
 import logging
 import os
 import base64
@@ -118,7 +119,12 @@ def repo_exists(owner: str, repo: str) -> bool:
         return False
 
 
-def get_repo_contents(owner: str, repo: str, path: str, token_override: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
+def get_repo_contents(
+    owner: str,
+    repo: str,
+    path: str,
+    token_override: Optional[str] = None,
+) -> Optional[List[Dict[str, Any]]]:
     """
     GET /repos/{owner}/{repo}/contents/{path}. Returns list of items (files/dirs) or None on error.
     """
@@ -208,7 +214,8 @@ def update_file(
         )
         _log.debug("GitHub API PUT %s -> %s", url, resp.status_code)
         if resp.status_code != 200:
-            _log.warning("GitHub API PUT %s -> %s, body=%s", url, resp.status_code, (resp.text[:500] if resp.text else ""))
+            body_preview = resp.text[:500] if resp.text else ""
+            _log.warning("GitHub API PUT %s -> %s, body=%s", url, resp.status_code, body_preview)
             return False
         return True
     except Exception:
@@ -349,7 +356,10 @@ def list_repo_invitations(owner: str, repo: str) -> List[Dict[str, Any]]:
             inv_id = inv.get("id", "?")
             _log.debug(
                 "  invitation id=%s invitee=%s expired=%s html_url=%s",
-                inv_id, login, expired, inv.get("html_url", "?"),
+                inv_id,
+                login,
+                expired,
+                inv.get("html_url", "?"),
             )
         return data
     except Exception:

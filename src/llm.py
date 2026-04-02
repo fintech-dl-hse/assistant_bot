@@ -29,14 +29,7 @@ def _build_messages(readme: str, user_question: str) -> list[ChatCompletionMessa
         "Do NOT use markdown tables. Prefer bullet lists.\n"
     )
 
-    user = (
-        "Course README context:\n"
-        "-----\n"
-        f"{readme}\n"
-        "-----\n\n"
-        "User question:\n"
-        f"{user_question}\n"
-    )
+    user = f"Course README context:\n-----\n{readme}\n-----\n\nUser question:\n{user_question}\n"
 
     messages: list[ChatCompletionMessageParam] = [
         {"role": "system", "content": system},
@@ -85,14 +78,7 @@ def _judge_quiz_answer(
         "- If the reference requires multiple parts, the student must provide all required parts.\n"
         "- If the student's answer is vague, unrelated, contradictory, or missing key details, output false.\n"
     )
-    user = (
-        "QUESTION:\n"
-        f"{quiz_question}\n\n"
-        "REFERENCE_ANSWER:\n"
-        f"{reference_answer}\n\n"
-        "STUDENT_ANSWER:\n"
-        f"{student_answer}\n"
-    )
+    user = f"QUESTION:\n{quiz_question}\n\nREFERENCE_ANSWER:\n{reference_answer}\n\nSTUDENT_ANSWER:\n{student_answer}\n"
     try:
         resp = llm.chat.completions.create(
             model=OPENAI_MODEL,
@@ -114,7 +100,8 @@ def _judge_quiz_answer(
         raise ValueError(f"Unexpected judge output: {content!r}")
     except Exception:
         logging.getLogger(__name__).warning("Judge failed; fallback to strict equality", exc_info=True)
-        return student_answer.strip() == reference_answer.strip(), {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        fallback_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        return student_answer.strip() == reference_answer.strip(), fallback_usage
 
 
 def _is_quiz_question_paraphrase(
@@ -157,13 +144,7 @@ def _is_quiz_question_paraphrase(
         "- Only use QUIZ_QUESTIONS to decide. If there is not enough information, output false.\n"
         "- Be conservative: output true only if you are confident it's a paraphrase.\n"
     )
-    user = (
-        "QUIZ_QUESTIONS:\n"
-        + "\n".join(items)
-        + "\n\nUSER_QUESTION:\n"
-        + str(user_question or "").strip()
-        + "\n"
-    )
+    user = "QUIZ_QUESTIONS:\n" + "\n".join(items) + "\n\nUSER_QUESTION:\n" + str(user_question or "").strip() + "\n"
 
     try:
         resp = llm.chat.completions.create(

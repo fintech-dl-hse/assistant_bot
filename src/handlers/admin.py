@@ -1,7 +1,5 @@
 import json
-import logging
 from pathlib import Path
-from typing import Any, Dict
 
 from context import BotContext
 from config import _save_settings
@@ -261,10 +259,7 @@ def handle_set_backup_chat_id(ctx: BotContext) -> None:
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text=(
-                "Бот должен быть участником чата.\n"
-                f"Текущий статус: {status or 'unknown'}"
-            ),
+            text=(f"Бот должен быть участником чата.\nТекущий статус: {status or 'unknown'}"),
         )
         return
 

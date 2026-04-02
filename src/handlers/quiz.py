@@ -741,9 +741,7 @@ def handle_quiz_admin_stat(ctx: BotContext) -> None:
     quiz_ids = [str(q.get("id") or "").strip() for q in quizzes]
     quiz_ids = [qid for qid in quiz_ids if qid]
     hidden_by_id: dict[str, bool] = {
-        str(q.get("id") or "").strip(): _is_hidden_quiz(q)
-        for q in quizzes
-        if str(q.get("id") or "").strip()
+        str(q.get("id") or "").strip(): _is_hidden_quiz(q) for q in quizzes if str(q.get("id") or "").strip()
     }
 
     passed_any = 0
