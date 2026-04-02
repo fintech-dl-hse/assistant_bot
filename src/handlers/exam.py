@@ -69,7 +69,7 @@ def handle_exam_3(ctx: BotContext) -> None:
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text="Для регистрации на экзамен необходимо выполнить все квизы.",
+            text="Для регистрации на экзамен необходимо выполнить все квизы. Используйте /quiz для прохождения квизов.",
         )
         return
 
