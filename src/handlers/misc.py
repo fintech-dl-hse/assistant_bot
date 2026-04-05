@@ -15,6 +15,7 @@ def handle_help(ctx: BotContext) -> None:
         "- /skip",
         "- /quiz_stat",
         "- /exam_3 — регистрация на экзамен третьего модуля",
+        "- /exam_3_cancel — отмена регистрации на экзамен третьего модуля",
     ]
     if ctx.is_admin:
         lines.append("- /add_admin <user_id>")
