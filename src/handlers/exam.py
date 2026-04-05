@@ -111,6 +111,56 @@ def handle_exam_3(ctx: BotContext) -> None:
     )
 
 
+def handle_exam_3_cancel(ctx: BotContext) -> None:
+    if ctx.chat_type != "private":
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Команда доступна только в личных сообщениях с ботом.",
+        )
+        return
+
+    users_data = _load_users(ctx.users_file)
+    users = users_data.get("users")
+    if not isinstance(users, dict):
+        users = {}
+        users_data["users"] = users
+
+    user_key = str(ctx.user_id)
+    user_record = users.get(user_key)
+
+    if not isinstance(user_record, dict) or not user_record.get("exam_3"):
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Вы не зарегистрированы на экзамен третьего модуля.",
+        )
+        return
+
+    users[user_key]["exam_3"] = False
+
+    try:
+        _save_users(ctx.users_file, users_data)
+    except Exception as e:
+        _log.warning("Failed to save users file %s: %s", ctx.users_file, e, exc_info=True)
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text=f"Не удалось сохранить данные: {type(e).__name__}: {e}",
+        )
+        return
+
+    _send_with_formatting_fallback(
+        tg=ctx.tg,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        text="Регистрация на экзамен третьего модуля отменена.",
+    )
+
+
 def handle_exam_3_stat(ctx: BotContext) -> None:
     if not ctx.is_admin:
         _send_with_formatting_fallback(
