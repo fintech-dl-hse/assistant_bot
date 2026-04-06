@@ -7,7 +7,7 @@ from typing import Dict
 from context import BotContext
 from data.quiz import _is_hidden_quiz, _get_user_quiz_state, _load_quiz_state, _load_quizzes
 from data.users import _load_users, _save_users
-from text_format import _send_with_formatting_fallback
+from text_format import _escape_markdown_v2_plain as _escape_md2, _send_with_formatting_fallback
 
 _log = logging.getLogger(__name__)
 
@@ -56,21 +56,37 @@ def handle_exam_3(ctx: BotContext) -> None:
     if isinstance(user_record, dict):
         fio = str(user_record.get("fio") or "").strip()
     if not fio:
+        msg = (
+            _escape_md2("Для регистрации на экзамен необходимо указать ФИО. ")
+            + _escape_md2("Используйте команду /me <ФИО>.\n\n")
+            + "*"
+            + _escape_md2("После указания ФИО повторно выполните /exam_3")
+            + "*"
+        )
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text="Для регистрации на экзамен необходимо указать ФИО. Используйте команду /me <ФИО>.",
+            text=msg,
+            markdown_v2_raw=True,
         )
         return
 
     # Check that all quizzes are completed
     if not _all_quizzes_completed(ctx.quizzes_file, ctx.quiz_state_file, ctx.user_id):
+        msg = (
+            _escape_md2("Для регистрации на экзамен необходимо выполнить все квизы. ")
+            + _escape_md2("Используйте /quiz для прохождения квизов.\n\n")
+            + "*"
+            + _escape_md2("После выполнения всех квизов повторно выполните /exam_3")
+            + "*"
+        )
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text="Для регистрации на экзамен необходимо выполнить все квизы. Используйте /quiz для прохождения квизов.",
+            text=msg,
+            markdown_v2_raw=True,
         )
         return
 
