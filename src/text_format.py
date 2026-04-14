@@ -164,17 +164,23 @@ def _send_with_formatting_fallback(
     text: str,
     *,
     markdown_v2_raw: bool = False,
+    reply_markup: dict | None = None,
 ) -> bool:
     """
     Отправляет сообщение. По умолчанию экранирует текст и шлёт как MarkdownV2.
     Если markdown_v2_raw=True, текст считается уже готовым MarkdownV2 (со ссылками и т.д.).
     """
+    extra: dict = {}
+    if reply_markup is not None:
+        extra["reply_markup"] = reply_markup
+
     if markdown_v2_raw:
         resp = tg.send_message(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             parse_mode="MarkdownV2",
             message=text,
+            **extra,
         )
         if getattr(resp, "status_code", 500) == 200:
             return True
@@ -183,6 +189,7 @@ def _send_with_formatting_fallback(
             message_thread_id=message_thread_id,
             parse_mode=None,
             message=text,
+            **extra,
         )
         return True
 
@@ -192,6 +199,7 @@ def _send_with_formatting_fallback(
         message_thread_id=message_thread_id,
         parse_mode="MarkdownV2",
         message=escaped,
+        **extra,
     )
     if getattr(resp2, "status_code", 500) == 200:
         return True
@@ -201,5 +209,6 @@ def _send_with_formatting_fallback(
         message_thread_id=message_thread_id,
         parse_mode=None,
         message=text,
+        **extra,
     )
     return getattr(resp_plain, "status_code", 500) == 200

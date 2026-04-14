@@ -34,6 +34,33 @@ def _handle_callback_query(
     callback_query_id = str(callback_query.get("id") or "")
     data = str(callback_query.get("data") or "")
 
+    if data == "invit_help":
+        try:
+            tg.answer_callback_query(callback_query_id=callback_query_id)
+        except Exception:
+            logging.getLogger(__name__).debug("Failed to answer callback_query", exc_info=True)
+
+        msg = callback_query.get("message") or {}
+        if isinstance(msg, dict):
+            cb_chat_id = int((msg.get("chat") or {}).get("id") or 0)
+            cb_message_thread_id = int(msg.get("message_thread_id") or 0)
+            help_text = (
+                "Если вы столкнулись с ошибкой:\n"
+                "- проверьте что аккаунт с которого вы залогинились совпадает с тем, "
+                "что указан в боте\n"
+                "- попробуйте ещё раз вызвать /hw_invite - бот обновит ссылку, "
+                "если ошибка произошла на стороне гитхаба\n"
+                "- если все ещё не получилось, отправьте последнее сообщение от бота "
+                "и скрин с ошибкой преподавателю"
+            )
+            _send_with_formatting_fallback(
+                tg=tg,
+                chat_id=cb_chat_id,
+                message_thread_id=cb_message_thread_id,
+                text=help_text,
+            )
+        return
+
     if not is_admin:
         try:
             tg.answer_callback_query(
