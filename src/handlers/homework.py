@@ -204,12 +204,18 @@ def handle_invit(ctx: BotContext) -> None:
 
     header = _escape_markdown_v2_plain(f"GitHub: {github_nick}") + "\n\n"
     body = "\n".join(md_parts).rstrip()
+    reply_markup = {
+        "inline_keyboard": [
+            [{"text": "Не могу получить домашку", "callback_data": "invit_help"}],
+        ]
+    }
     _send_with_formatting_fallback(
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
         text=header + body,
         markdown_v2_raw=True,
+        reply_markup=reply_markup,
     )
 
 
