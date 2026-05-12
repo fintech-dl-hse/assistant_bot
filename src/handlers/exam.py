@@ -11,6 +11,16 @@ from text_format import _escape_markdown_v2_plain as _escape_md2, _send_with_for
 
 _log = logging.getLogger(__name__)
 
+_MODULE_NAME_GENITIVE = {3: "третьего", 4: "четвертого"}
+
+
+def _exam_field(module: int) -> str:
+    return f"exam_{module}"
+
+
+def _module_name(module: int) -> str:
+    return _MODULE_NAME_GENITIVE.get(module, f"{module}-го")
+
 
 def _all_quizzes_completed(quizzes_file: str, quiz_state_file: str, user_id: int) -> bool:
     quizzes = _load_quizzes(quizzes_file)
@@ -32,7 +42,7 @@ def _all_quizzes_completed(quizzes_file: str, quiz_state_file: str, user_id: int
     return True
 
 
-def handle_exam_3(ctx: BotContext) -> None:
+def _handle_exam_register(ctx: BotContext, module: int) -> None:
     if ctx.chat_type != "private":
         _send_with_formatting_fallback(
             tg=ctx.tg,
@@ -41,6 +51,10 @@ def handle_exam_3(ctx: BotContext) -> None:
             text="Команда доступна только в личных сообщениях с ботом.",
         )
         return
+
+    field = _exam_field(module)
+    module_name = _module_name(module)
+    cmd = f"/exam_{module}"
 
     users_data = _load_users(ctx.users_file)
     users = users_data.get("users")
@@ -60,7 +74,7 @@ def handle_exam_3(ctx: BotContext) -> None:
             _escape_md2("Для регистрации на экзамен необходимо указать ФИО. ")
             + _escape_md2("Используйте команду /me <ФИО>.\n\n")
             + "*"
-            + _escape_md2("После указания ФИО повторно выполните /exam_3")
+            + _escape_md2(f"После указания ФИО повторно выполните {cmd}")
             + "*"
         )
         _send_with_formatting_fallback(
@@ -78,7 +92,7 @@ def handle_exam_3(ctx: BotContext) -> None:
             _escape_md2("Для регистрации на экзамен необходимо выполнить все квизы. ")
             + _escape_md2("Используйте /quiz для прохождения квизов.\n\n")
             + "*"
-            + _escape_md2("После выполнения всех квизов повторно выполните /exam_3")
+            + _escape_md2(f"После выполнения всех квизов повторно выполните {cmd}")
             + "*"
         )
         _send_with_formatting_fallback(
@@ -91,19 +105,19 @@ def handle_exam_3(ctx: BotContext) -> None:
         return
 
     # Check if already registered
-    if isinstance(user_record, dict) and user_record.get("exam_3"):
+    if isinstance(user_record, dict) and user_record.get(field):
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text="Вы уже зарегистрированы на экзамен третьего модуля.",
+            text=f"Вы уже зарегистрированы на экзамен {module_name} модуля.",
         )
         return
 
     # Register
     if user_key not in users:
         users[user_key] = {}
-    users[user_key]["exam_3"] = True
+    users[user_key][field] = True
     users[user_key].setdefault("fio", fio)
     users[user_key].setdefault("username", ctx.username)
 
@@ -123,11 +137,11 @@ def handle_exam_3(ctx: BotContext) -> None:
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
-        text=f"Вы успешно зарегистрированы на экзамен третьего модуля.\nФИО: {fio}",
+        text=f"Вы успешно зарегистрированы на экзамен {module_name} модуля.\nФИО: {fio}",
     )
 
 
-def handle_exam_3_cancel(ctx: BotContext) -> None:
+def _handle_exam_cancel(ctx: BotContext, module: int) -> None:
     if ctx.chat_type != "private":
         _send_with_formatting_fallback(
             tg=ctx.tg,
@@ -136,6 +150,9 @@ def handle_exam_3_cancel(ctx: BotContext) -> None:
             text="Команда доступна только в личных сообщениях с ботом.",
         )
         return
+
+    field = _exam_field(module)
+    module_name = _module_name(module)
 
     users_data = _load_users(ctx.users_file)
     users = users_data.get("users")
@@ -146,16 +163,16 @@ def handle_exam_3_cancel(ctx: BotContext) -> None:
     user_key = str(ctx.user_id)
     user_record = users.get(user_key)
 
-    if not isinstance(user_record, dict) or not user_record.get("exam_3"):
+    if not isinstance(user_record, dict) or not user_record.get(field):
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
-            text="Вы не зарегистрированы на экзамен третьего модуля.",
+            text=f"Вы не зарегистрированы на экзамен {module_name} модуля.",
         )
         return
 
-    users[user_key]["exam_3"] = False
+    users[user_key][field] = False
 
     try:
         _save_users(ctx.users_file, users_data)
@@ -173,11 +190,11 @@ def handle_exam_3_cancel(ctx: BotContext) -> None:
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
-        text="Регистрация на экзамен третьего модуля отменена.",
+        text=f"Регистрация на экзамен {module_name} модуля отменена.",
     )
 
 
-def handle_exam_3_stat(ctx: BotContext) -> None:
+def _handle_exam_stat(ctx: BotContext, module: int) -> None:
     if not ctx.is_admin:
         _send_with_formatting_fallback(
             tg=ctx.tg,
@@ -187,6 +204,9 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
         )
         return
 
+    field = _exam_field(module)
+    module_name = _module_name(module)
+
     users_data = _load_users(ctx.users_file)
     users = users_data.get("users") or {}
 
@@ -194,7 +214,7 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
     for user_key, u in users.items():
         if not isinstance(u, dict):
             continue
-        if not u.get("exam_3"):
+        if not u.get(field):
             continue
         fio = str(u.get("fio") or "").strip()
         username = str(u.get("username") or "").strip()
@@ -205,7 +225,7 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
         tg=ctx.tg,
         chat_id=ctx.chat_id,
         message_thread_id=ctx.message_thread_id,
-        text=f"Зарегистрировано на экзамен третьего модуля: {count}",
+        text=f"Зарегистрировано на экзамен {module_name} модуля: {count}",
     )
 
     if not registered:
@@ -228,13 +248,13 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
             data={
                 "chat_id": ctx.chat_id,
                 "message_thread_id": ctx.message_thread_id,
-                "caption": f"Список зарегистрированных на экзамен 3 модуля ({count} чел.)",
+                "caption": f"Список зарегистрированных на экзамен {module} модуля ({count} чел.)",
             },
-            files={"document": ("exam_3_registered.csv", file_obj, "text/csv")},
+            files={"document": (f"exam_{module}_registered.csv", file_obj, "text/csv")},
             timeout=15,
         )
     except Exception as e:
-        _log.warning("Failed to send exam_3 CSV: %s", e, exc_info=True)
+        _log.warning("Failed to send exam_%d CSV: %s", module, e, exc_info=True)
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
@@ -275,16 +295,40 @@ def handle_exam_3_stat(ctx: BotContext) -> None:
             data={
                 "chat_id": ctx.chat_id,
                 "message_thread_id": ctx.message_thread_id,
-                "caption": f"Расписание экзамена 3 модуля ({count} чел.)",
+                "caption": f"Расписание экзамена {module} модуля ({count} чел.)",
             },
-            files={"document": ("exam_3_schedule.csv", schedule_file, "text/csv")},
+            files={"document": (f"exam_{module}_schedule.csv", schedule_file, "text/csv")},
             timeout=15,
         )
     except Exception as e:
-        _log.warning("Failed to send exam_3 schedule CSV: %s", e, exc_info=True)
+        _log.warning("Failed to send exam_%d schedule CSV: %s", module, e, exc_info=True)
         _send_with_formatting_fallback(
             tg=ctx.tg,
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,
             text=f"Не удалось отправить CSV с расписанием: {type(e).__name__}: {e}",
         )
+
+
+def handle_exam_3(ctx: BotContext) -> None:
+    _handle_exam_register(ctx, 3)
+
+
+def handle_exam_3_cancel(ctx: BotContext) -> None:
+    _handle_exam_cancel(ctx, 3)
+
+
+def handle_exam_3_stat(ctx: BotContext) -> None:
+    _handle_exam_stat(ctx, 3)
+
+
+def handle_exam_4(ctx: BotContext) -> None:
+    _handle_exam_register(ctx, 4)
+
+
+def handle_exam_4_cancel(ctx: BotContext) -> None:
+    _handle_exam_cancel(ctx, 4)
+
+
+def handle_exam_4_stat(ctx: BotContext) -> None:
+    _handle_exam_stat(ctx, 4)

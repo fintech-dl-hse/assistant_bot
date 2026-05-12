@@ -57,6 +57,8 @@ def _save_users(users_file: str, data: Dict[str, Any]) -> None:
         }
         if u.get("exam_3"):
             entry["exam_3"] = True
+        if u.get("exam_4"):
+            entry["exam_4"] = True
         normalized_users[str(user_key)] = entry
 
     payload = {"users": normalized_users}
