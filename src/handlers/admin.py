@@ -4,6 +4,7 @@ from pathlib import Path
 from context import BotContext
 from config import _save_settings
 from backup import _create_backup
+from data.users import _load_users
 from logging_utils import _tokens_stat_from_log
 from text_format import _send_with_formatting_fallback
 
@@ -418,4 +419,72 @@ def handle_course_members(ctx: BotContext) -> None:
             f"- проверено membership: {checked}\n"
             f"- ошибок проверки membership: {check_errors}"
         ),
+    )
+
+
+def handle_ghtotg(ctx: BotContext) -> None:
+    if not ctx.is_admin:
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Недостаточно прав: команда доступна только администраторам.",
+        )
+        return
+
+    github_nick = (ctx.args or "").strip().lstrip("@")
+    if not github_nick:
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Usage: /ghtotg <github_nick>",
+        )
+        return
+
+    users_data = _load_users(ctx.users_file)
+    users = users_data.get("users") or {}
+
+    needle = github_nick.lower()
+    matches: list[dict[str, str]] = []
+    for u in users.values():
+        if not isinstance(u, dict):
+            continue
+        if not (u.get("exam_3") or u.get("exam_4")):
+            continue
+        gh = str(u.get("github") or "").strip()
+        if not gh or gh.lower() != needle:
+            continue
+        matches.append(
+            {
+                "github": gh,
+                "username": str(u.get("username") or "").strip(),
+                "fio": str(u.get("fio") or "").strip(),
+            }
+        )
+
+    if not matches:
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text=f"Не найдено пользователей с GitHub ником '{github_nick}', зарегистрированных на экзамен.",
+        )
+        return
+
+    lines: list[str] = []
+    if len(matches) > 1:
+        lines.append(f"Найдено пользователей: {len(matches)}")
+    for m in matches:
+        tg_nick = f"@{m['username']}" if m["username"] else "(нет username)"
+        parts = [f"GitHub: {m['github']}", f"Telegram: {tg_nick}"]
+        if m["fio"]:
+            parts.append(f"ФИО: {m['fio']}")
+        lines.append("\n".join(parts))
+
+    _send_with_formatting_fallback(
+        tg=ctx.tg,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        text="\n\n".join(lines),
     )

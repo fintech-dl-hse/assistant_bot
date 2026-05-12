@@ -36,6 +36,7 @@ def handle_help(ctx: BotContext) -> None:
         lines.append("- /teach — последний семинар (Colab) и последняя лекция")
         lines.append("- /exam_3_stat — статистика регистраций на экзамен 3 модуля")
         lines.append("- /exam_4_stat — статистика регистраций на экзамен 4 модуля")
+        lines.append("- /ghtotg <github_nick> — найти telegram-ник участника экзамена по нику на GitHub")
     _send_with_formatting_fallback(
         tg=ctx.tg,
         chat_id=ctx.chat_id,
