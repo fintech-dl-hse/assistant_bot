@@ -29,7 +29,14 @@ from handlers.quiz import (
     handle_quiz_wizard,
     handle_skip,
 )
-from handlers.exam import handle_exam_3, handle_exam_3_cancel, handle_exam_3_stat
+from handlers.exam import (
+    handle_exam_3,
+    handle_exam_3_cancel,
+    handle_exam_3_stat,
+    handle_exam_4,
+    handle_exam_4_cancel,
+    handle_exam_4_stat,
+)
 from handlers.teach import handle_teach
 from handlers.user import handle_github, handle_me
 
@@ -62,6 +69,9 @@ COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
     "/exam_3": handle_exam_3,
     "/exam_3_cancel": handle_exam_3_cancel,
     "/exam_3_stat": handle_exam_3_stat,
+    "/exam_4": handle_exam_4,
+    "/exam_4_cancel": handle_exam_4_cancel,
+    "/exam_4_stat": handle_exam_4_stat,
 }
 
 
