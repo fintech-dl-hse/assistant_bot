@@ -15,6 +15,7 @@ from handlers.admin import (
     handle_set_backup_chat_id,
     handle_tokens_stat,
 )
+from handlers.agent_api_key import handle_agent_api_key
 from handlers.homework import handle_hw_invite, handle_hw_pin, handle_invit
 from handlers.misc import handle_get_chat_id, handle_help
 from handlers.qa import handle_qa
@@ -74,6 +75,7 @@ COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
     "/exam_4_cancel": handle_exam_4_cancel,
     "/exam_4_stat": handle_exam_4_stat,
     "/ghtotg": handle_ghtotg,
+    "/agent_api_key": handle_agent_api_key,
 }
 
 
