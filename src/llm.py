@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any, Dict, Tuple
 
 import requests
@@ -8,10 +9,14 @@ from openai.types.chat import ChatCompletionMessageParam
 from constants import OPENAI_MODEL, README_URL
 from logging_utils import _extract_openai_usage
 
+_log = logging.getLogger(__name__)
+
 
 def _fetch_readme() -> str:
+    _t = time.perf_counter()
     resp = requests.get(README_URL, timeout=20)
     resp.raise_for_status()
+    _log.info("fetched README in %.3fs", time.perf_counter() - _t)
     return resp.text
 
 
@@ -40,6 +45,7 @@ def _build_messages(readme: str, user_question: str) -> list[ChatCompletionMessa
 
 def _answer_question(client: OpenAI, readme: str, question: str) -> Tuple[str, Dict[str, int]]:
     messages = _build_messages(readme=readme, user_question=question)
+    _t = time.perf_counter()
     response = client.chat.completions.create(
         model=OPENAI_MODEL,
         max_tokens=2500,
@@ -48,6 +54,7 @@ def _answer_question(client: OpenAI, readme: str, question: str) -> Tuple[str, D
         top_p=0.95,
         messages=messages,
     )
+    _log.info("llm /qa completion took %.3fs", time.perf_counter() - _t)
     content = response.choices[0].message.content or ""
     usage = _extract_openai_usage(response)
     return content.strip() or "Не смог сформировать ответ. Попробуйте переформулировать вопрос.", usage
@@ -80,6 +87,7 @@ def _judge_quiz_answer(
     )
     user = f"QUESTION:\n{quiz_question}\n\nREFERENCE_ANSWER:\n{reference_answer}\n\nSTUDENT_ANSWER:\n{student_answer}\n"
     try:
+        _t = time.perf_counter()
         resp = llm.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=0,
@@ -92,7 +100,7 @@ def _judge_quiz_answer(
             ],
         )
         content = (resp.choices[0].message.content or "").strip().lower()
-        print("judge resp content", content)
+        _log.info("llm quiz judge took %.3fs -> %r", time.perf_counter() - _t, content)
         if content.startswith("true"):
             return True, _extract_openai_usage(resp)
         if content.startswith("false"):
@@ -147,6 +155,7 @@ def _is_quiz_question_paraphrase(
     user = "QUIZ_QUESTIONS:\n" + "\n".join(items) + "\n\nUSER_QUESTION:\n" + str(user_question or "").strip() + "\n"
 
     try:
+        _t = time.perf_counter()
         resp = llm.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=0,
@@ -159,6 +168,7 @@ def _is_quiz_question_paraphrase(
             ],
         )
         content = (resp.choices[0].message.content or "").strip().lower()
+        _log.info("llm paraphrase check took %.3fs -> %r", time.perf_counter() - _t, content)
         if content.startswith("true"):
             return True, _extract_openai_usage(resp)
         if content.startswith("false"):
