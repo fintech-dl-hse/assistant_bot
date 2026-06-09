@@ -253,16 +253,25 @@ class TelegramClient:
 
         return resp.json()
 
-    def get_updates(self, offset: int = 0) -> Dict[str, Any]:
-        """Get updates from Telegram."""
+    def get_updates(self, offset: int = 0, long_poll_timeout: int = 25) -> Dict[str, Any]:
+        """Get updates from Telegram using long polling.
+
+        Passing Telegram's own ``timeout`` parameter makes the API hold the
+        connection open until an update arrives (or the timeout elapses),
+        instead of returning immediately and forcing a busy loop that hammers
+        the API and triggers rate limiting. The HTTP timeout is kept slightly
+        larger than the long-poll timeout so the request does not time out
+        before Telegram responds.
+        """
         resp = self._request(
             method="GET",
             endpoint="getUpdates",
             params={
                 "offset": offset,
+                "timeout": long_poll_timeout,
                 "allowed_updates": '["message", "callback_query"]',
             },
-            timeout=300,
+            timeout=long_poll_timeout + 10,
             enable_debug_logs=False,
         )
 
