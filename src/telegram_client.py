@@ -117,6 +117,17 @@ class TelegramClient:
                     elapsed_time,
                 )
 
+            # Surface slow Telegram API calls regardless of debug logging.
+            # getUpdates intentionally long-polls, so skip it here.
+            if endpoint != "getUpdates" and elapsed_time > 1.0:
+                self.logger.warning(
+                    "slow telegram api call: %s %s took %.3fs (status %d)",
+                    method,
+                    endpoint,
+                    elapsed_time,
+                    resp.status_code,
+                )
+
             if resp.status_code != 200:
                 elapsed_time = time.perf_counter() - start_time
                 self.logger.warning(

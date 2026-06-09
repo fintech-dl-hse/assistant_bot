@@ -82,6 +82,9 @@ def _handle_message(
     bot_user_id: int,
     bot_username: str,
 ) -> None:
+    logger = logging.getLogger(__name__)
+
+    t0 = time.perf_counter()
     ctx = _build_context(
         tg=tg,
         llm=llm,
@@ -94,6 +97,7 @@ def _handle_message(
         bot_user_id=bot_user_id,
         bot_username=bot_username,
     )
+    t_ctx = time.perf_counter()
 
     _log_private_message(
         message=message,
@@ -102,8 +106,22 @@ def _handle_message(
         request_id=ctx.request_id,
         cmd=ctx.cmd,
     )
+    t_log = time.perf_counter()
 
     dispatch(ctx)
+    t_dispatch = time.perf_counter()
+
+    logger.info(
+        "handled message req=%s cmd=%s chat=%s user=%s | build=%.3fs log=%.3fs dispatch=%.3fs total=%.3fs",
+        ctx.request_id,
+        ctx.cmd or "<none>",
+        ctx.chat_id,
+        ctx.user_id,
+        t_ctx - t0,
+        t_log - t_ctx,
+        t_dispatch - t_log,
+        t_dispatch - t0,
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -173,13 +191,25 @@ def main(argv: list[str] | None = None) -> None:
     offset = 0
     while True:
         try:
+            poll_start = time.perf_counter()
             data = tg.get_updates(offset=offset)
+            poll_elapsed = time.perf_counter() - poll_start
             results = data.get("result") or []
+
+            if results:
+                logger.info(
+                    "fetched %d update(s) in %.3fs (backlog)",
+                    len(results),
+                    poll_elapsed,
+                )
+                batch_start = time.perf_counter()
 
             for update in results:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
+
+                update_start = time.perf_counter()
 
                 message = update.get("message")
                 if isinstance(message, dict):
@@ -206,6 +236,21 @@ def main(argv: list[str] | None = None) -> None:
                         quizzes_file=args.quizzes_file,
                         quiz_state_file=args.quiz_state_file,
                     )
+
+                update_elapsed = time.perf_counter() - update_start
+                if update_elapsed > 1.0:
+                    logger.warning(
+                        "slow update %s took %.3fs",
+                        update_id,
+                        update_elapsed,
+                    )
+
+            if results:
+                logger.info(
+                    "processed batch of %d update(s) in %.3fs",
+                    len(results),
+                    time.perf_counter() - batch_start,
+                )
 
         except requests.exceptions.RequestException as e:
             logger.warning("Polling error: %s", e)

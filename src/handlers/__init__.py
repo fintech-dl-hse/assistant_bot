@@ -1,5 +1,6 @@
 import difflib
 import logging
+import time
 from typing import Callable
 
 from context import BotContext
@@ -107,9 +108,24 @@ def dispatch(ctx: BotContext) -> None:
             )
         return
 
+    _log = logging.getLogger(__name__)
+
+    react_start = time.perf_counter()
     try:
         ctx.tg.send_message_reaction(chat_id=ctx.chat_id, message_id=ctx.message_id, reaction_emoji="👀")
     except Exception:
-        logging.getLogger(__name__).debug("Failed to set reaction", exc_info=True)
+        _log.debug("Failed to set reaction", exc_info=True)
+    react_elapsed = time.perf_counter() - react_start
 
-    handler(ctx)
+    handler_start = time.perf_counter()
+    try:
+        handler(ctx)
+    finally:
+        handler_elapsed = time.perf_counter() - handler_start
+        _log.info(
+            "dispatch cmd=%s req=%s | reaction=%.3fs handler=%.3fs",
+            ctx.cmd,
+            ctx.request_id,
+            react_elapsed,
+            handler_elapsed,
+        )
