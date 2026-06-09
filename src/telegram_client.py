@@ -235,8 +235,15 @@ class TelegramClient:
 
         return resp
 
-    def send_message_reaction(self, chat_id: int, message_id: int, reaction_emoji: str, **kwargs) -> requests.Response:
-        """Send a reaction to a message."""
+    def send_message_reaction(
+        self, chat_id: int, message_id: int, reaction_emoji: str, timeout: int = 5, **kwargs
+    ) -> requests.Response:
+        """Send a reaction to a message.
+
+        Uses a short timeout by default: reactions are a non-critical UX nicety
+        and Telegram can throttle setMessageReaction for many seconds, so we
+        never want it to block the actual response for long.
+        """
         resp = self._request(
             method="POST",
             endpoint="setMessageReaction",
@@ -246,7 +253,7 @@ class TelegramClient:
                 "reaction": [{"type": "emoji", "emoji": reaction_emoji}],
                 **kwargs,
             },
-            timeout=10,
+            timeout=timeout,
         )
 
         return resp

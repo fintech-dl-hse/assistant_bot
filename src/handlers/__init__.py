@@ -1,5 +1,6 @@
 import difflib
 import logging
+import threading
 import time
 from typing import Callable
 
@@ -110,12 +111,18 @@ def dispatch(ctx: BotContext) -> None:
 
     _log = logging.getLogger(__name__)
 
-    react_start = time.perf_counter()
-    try:
-        ctx.tg.send_message_reaction(chat_id=ctx.chat_id, message_id=ctx.message_id, reaction_emoji="👀")
-    except Exception:
-        _log.debug("Failed to set reaction", exc_info=True)
-    react_elapsed = time.perf_counter() - react_start
+    # Fire the "👀" reaction without blocking: setMessageReaction can take many
+    # seconds (Telegram throttles reactions), and on a single-threaded bot a
+    # synchronous call here delays the actual reply and every queued update.
+    def _react() -> None:
+        try:
+            ctx.tg.send_message_reaction(
+                chat_id=ctx.chat_id, message_id=ctx.message_id, reaction_emoji="👀"
+            )
+        except Exception:
+            _log.debug("Failed to set reaction", exc_info=True)
+
+    threading.Thread(target=_react, daemon=True).start()
 
     handler_start = time.perf_counter()
     try:
@@ -123,9 +130,8 @@ def dispatch(ctx: BotContext) -> None:
     finally:
         handler_elapsed = time.perf_counter() - handler_start
         _log.info(
-            "dispatch cmd=%s req=%s | reaction=%.3fs handler=%.3fs",
+            "dispatch cmd=%s req=%s | handler=%.3fs",
             ctx.cmd,
             ctx.request_id,
-            react_elapsed,
             handler_elapsed,
         )
