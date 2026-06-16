@@ -25,6 +25,7 @@ def handle_help(ctx: BotContext) -> None:
         lines.append("- /course_chat <chat_id>")
         lines.append("- /course_members")
         lines.append("- /quiz_create <quiz_id>")
+        lines.append("- /quiz_edit <quiz_id> — перезапросить вопрос и ответ существующего квиза")
         lines.append("- /quiz_list")
         lines.append("- /quiz_delete <quiz_id>")
         lines.append("- /quiz_ask <quiz_id>")
