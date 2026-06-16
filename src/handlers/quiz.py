@@ -506,6 +506,53 @@ def handle_quiz_create(ctx: BotContext) -> None:
     )
 
 
+def handle_quiz_edit(ctx: BotContext) -> None:
+    if ctx.chat_type != "private":
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Команда доступна только в личных сообщениях с ботом.",
+        )
+        return
+    if not ctx.is_admin:
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Недостаточно прав: команда доступна только администраторам.",
+        )
+        return
+
+    quiz_id = (ctx.args or "").strip()
+    if not quiz_id:
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text="Usage: /quiz_edit <quiz_id>",
+        )
+        return
+
+    quizzes = _load_quizzes(ctx.quizzes_file)
+    if not any(str(q.get("id") or "") == quiz_id for q in quizzes):
+        _send_with_formatting_fallback(
+            tg=ctx.tg,
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            text=f"Квиз с id={quiz_id} не найден.",
+        )
+        return
+
+    _QUIZ_WIZARD_STATE[ctx.user_id] = {"stage": "await_question", "quiz_id": quiz_id, "mode": "edit"}
+    _send_with_formatting_fallback(
+        tg=ctx.tg,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        text=f"Редактирование квиза {quiz_id}. Отправьте новый вопрос для квиза.",
+    )
+
+
 def handle_quiz_list(ctx: BotContext) -> None:
     if not ctx.is_admin:
         _send_with_formatting_fallback(
