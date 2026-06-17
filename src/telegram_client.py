@@ -298,6 +298,28 @@ class TelegramClient:
 
         return resp.json()
 
+    def get_file(self, file_id: str) -> Dict[str, Any]:
+        """Resolve a Telegram file_id to its download metadata (incl. file_path)."""
+        resp = self._request(
+            method="GET",
+            endpoint="getFile",
+            params={"file_id": file_id},
+            timeout=10,
+        )
+
+        if resp.status_code != 200:
+            raise ValueError("Failed to get file", resp.content)
+
+        return resp.json()
+
+    def download_file(self, file_path: str, timeout: int = 30) -> bytes:
+        """Download a file's raw bytes given the file_path from get_file()."""
+        url = f"https://api.telegram.org/file/bot{self._telegram_bot_token}/{file_path}"
+        resp = requests.get(url, timeout=timeout)
+        if resp.status_code != 200:
+            raise ValueError("Failed to download file", resp.status_code)
+        return resp.content
+
     def get_chat_member(self, chat_id: int, user_id: int) -> Dict[str, Any]:
         """Get information about a member of a chat (used for permission checks)."""
         resp = self._request(

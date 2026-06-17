@@ -39,6 +39,12 @@ def _build_context(
     settings = _load_settings(config_path)
     text = (message.get("text") or "").strip()
     cmd, args = _extract_command(text)
+    # Documents/photos carry their command in the caption, not the text
+    # (e.g. a CSV sent with caption "/upload_exam_grades").
+    if not cmd:
+        caption = (message.get("caption") or "").strip()
+        if caption.startswith("/"):
+            cmd, args = _extract_command(caption)
     chat_id, message_id, message_thread_id = _get_message_basics(message)
     user_id, username = _get_sender(message)
     is_admin_flag = _is_admin(settings=settings, user_id=user_id, username=username)

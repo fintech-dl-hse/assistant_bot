@@ -42,6 +42,7 @@ from handlers.exam import (
     handle_exam_4_cancel,
     handle_exam_4_stat,
 )
+from handlers.exam_grades import handle_upload_exam_grades
 from handlers.teach import handle_teach
 from handlers.user import handle_github, handle_me
 
@@ -80,6 +81,7 @@ COMMAND_HANDLERS: dict[str, Callable[[BotContext], None]] = {
     "/exam_4_stat": handle_exam_4_stat,
     "/ghtotg": handle_ghtotg,
     "/agent_api_key": handle_agent_api_key,
+    "/upload_exam_grades": handle_upload_exam_grades,
 }
 
 

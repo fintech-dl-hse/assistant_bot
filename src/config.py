@@ -59,6 +59,7 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
         "backup_chat_id": None,
         "drive_credentials_path": None,
         "drive_feedback_folder_id": None,
+        "exam_grades_fn_url": None,
     }
     try:
         path = Path(config_path)
@@ -106,12 +107,18 @@ def _load_settings(config_path: str) -> Dict[str, Any]:
             drive_feedback_folder_id = None
         else:
             drive_feedback_folder_id = drive_feedback_folder_id.strip()
+        exam_grades_fn_url = data.get("exam_grades_fn_url")
+        if not isinstance(exam_grades_fn_url, str) or not exam_grades_fn_url.strip():
+            exam_grades_fn_url = None
+        else:
+            exam_grades_fn_url = exam_grades_fn_url.strip()
         return {
             "admin_users": admin_users,
             "course_chat_id": course_chat_id,
             "backup_chat_id": backup_chat_id,
             "drive_credentials_path": drive_credentials_path,
             "drive_feedback_folder_id": drive_feedback_folder_id,
+            "exam_grades_fn_url": exam_grades_fn_url,
         }
     except Exception:
         logging.getLogger(__name__).warning(
@@ -137,6 +144,7 @@ def _save_settings(config_path: str, settings: Dict[str, Any]) -> None:
         "backup_chat_id": settings.get("backup_chat_id", None),
         "drive_credentials_path": settings.get("drive_credentials_path"),
         "drive_feedback_folder_id": settings.get("drive_feedback_folder_id"),
+        "exam_grades_fn_url": settings.get("exam_grades_fn_url"),
     }
     raw = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     tmp_path.write_text(raw, encoding="utf-8")

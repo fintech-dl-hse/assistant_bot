@@ -7,5 +7,6 @@
     "fintech-dl-hse/hw-autograd-mlp-{github_nickname}"
   ],
   "drive_credentials_path": "google-cloud-service-account-fintech-dl-hse.json",
-  "drive_feedback_folder_id": null
+  "drive_feedback_folder_id": null,
+  "exam_grades_fn_url": null
 }
