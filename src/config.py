@@ -4,38 +4,40 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
+from statedir import state_path
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fintech DL HSE assistant Telegram bot")
     parser.add_argument(
         "--config",
         type=str,
-        default="bot_config.json",
-        help="Path to JSON config file (default: assistant_bot/bot_config.json)",
+        default=state_path("bot_config.json"),
+        help="Path to JSON config file (default: bot_config.json in $ASSISTANT_BOT_STATE_DIR)",
     )
     parser.add_argument(
         "--pm-log-file",
         type=str,
-        default="private_messages.jsonl",
-        help="Path to JSONL log file for private chats (default: assistant_bot/private_messages.jsonl)",
+        default=state_path("private_messages.jsonl"),
+        help="Path to JSONL log file for private chats (default: private_messages.jsonl in $ASSISTANT_BOT_STATE_DIR)",
     )
     parser.add_argument(
         "--quizzes-file",
         type=str,
-        default="quizzes.json",
-        help="Path to JSON file with quizzes (default: assistant_bot/quizzes.json)",
+        default=state_path("quizzes.json"),
+        help="Path to JSON file with quizzes (default: quizzes.json in $ASSISTANT_BOT_STATE_DIR)",
     )
     parser.add_argument(
         "--quiz-state-file",
         type=str,
-        default="quiz_state.json",
-        help="Path to JSON file with per-user quiz state (default: assistant_bot/quiz_state.json)",
+        default=state_path("quiz_state.json"),
+        help="Path to JSON file with per-user quiz state (default: quiz_state.json in $ASSISTANT_BOT_STATE_DIR)",
     )
     parser.add_argument(
         "--users-file",
         type=str,
-        default="users.json",
-        help="Path to JSON file with user data (default: assistant_bot/users.json)",
+        default=state_path("users.json"),
+        help="Path to JSON file with user data (default: users.json in $ASSISTANT_BOT_STATE_DIR)",
     )
     return parser.parse_args(argv)
 

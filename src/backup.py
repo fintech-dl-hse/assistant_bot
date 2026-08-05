@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from telegram_client import TelegramClient
+from statedir import state_dir
 
 
 def _create_backup(
@@ -23,8 +24,8 @@ def _create_backup(
     logger = logging.getLogger(__name__)
 
     try:
-        # Create backup directory
-        backup_dir = Path("backups")
+        # Create backup directory inside the state directory, not the checkout
+        backup_dir = state_dir() / "backups"
         backup_dir.mkdir(exist_ok=True)
 
         # Create backup filename with timestamp
