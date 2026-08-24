@@ -221,3 +221,6 @@ venv/
 build
 backups/
 *.json
+
+# Deep Interview working artifacts (ephemeral specs)
+run/
